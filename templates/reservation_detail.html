@@ -149,8 +149,8 @@
             <div class="form-section-title">Customer</div>
             <div class="form-grid">
               <div class="form-group">
-                <label class="form-label">Name</label>
-                <input class="form-control" type="text" name="customer_name" value="{{ reservation.get('Customer Name','') }}">
+                <label class="form-label">Name <span class="req">*</span></label>
+                <input class="form-control" type="text" name="customer_name" value="{{ reservation.get('Customer Name','') }}" required>
               </div>
               <div class="form-group">
                 <label class="form-label">Phone</label>

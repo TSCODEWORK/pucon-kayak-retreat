@@ -2,6 +2,7 @@ import os
 import sys
 import uuid
 import json
+import math
 import functools
 from pathlib import Path
 from datetime import datetime, date
@@ -54,13 +55,18 @@ _sheets_client = SheetsClient(
 syncer = SheetsSyncer(_sheets_client)
 
 
+_last_sync_sheet_id = ""
+
 def _sync():
     """Push to Sheets in background after every write."""
+    global _last_sync_sheet_id
     sheet_id = db.get_settings().get("sheet_id", "") or os.environ.get("GOOGLE_SHEET_ID", "")
     if sheet_id:
-        # Keep the client's sheet_id current in case it was set after startup
-        _sheets_client._sheet_id = sheet_id
-        _sheets_client._spreadsheet = None  # force reconnect with new ID
+        if sheet_id != _last_sync_sheet_id:
+            # Sheet ID changed — force reconnect
+            _sheets_client._sheet_id = sheet_id
+            _sheets_client._spreadsheet = None
+            _last_sync_sheet_id = sheet_id
         syncer.push_async(db)
 
 
@@ -213,7 +219,7 @@ def new_reservation():
         return redirect(url_for("dashboard"))
 
     # Pass active reservations to template for client-side conflict display
-    reservations_json = json.dumps([
+    active_reservations = [
         {
             "start": r.get("Start Date & Time", ""),
             "end":   r.get("End Date & Time", ""),
@@ -222,7 +228,7 @@ def new_reservation():
         }
         for r in reservations_raw
         if r.get("Reservation Status") not in ("Canceled", "Returned")
-    ])
+    ]
 
     form_data = {}
 
@@ -241,8 +247,21 @@ def new_reservation():
             errors.append("Start date/time is required.")
         if not end_str:
             errors.append("End date/time is required.")
-        if start_str and end_str and start_str >= end_str:
+        # Parse with _parse_dt to catch malformed strings, then compare as datetimes
+        start_dt_val = _parse_dt(start_str) if start_str else None
+        end_dt_val = _parse_dt(end_str) if end_str else None
+        if start_str and not start_dt_val:
+            errors.append("Start date/time is not a valid date.")
+        if end_str and not end_dt_val:
+            errors.append("End date/time is not a valid date.")
+        if start_dt_val and end_dt_val and end_dt_val <= start_dt_val:
             errors.append("End time must be after start time.")
+        try:
+            pay_amt = float(request.form.get("payment_amount", "0") or "0")
+            if pay_amt < 0:
+                errors.append("Payment amount cannot be negative.")
+        except ValueError:
+            errors.append("Payment amount must be a number.")
 
         if not errors:
             try:
@@ -258,7 +277,8 @@ def new_reservation():
         if errors:
             for err in errors:
                 flash(err, "error")
-            return render_template("new_reservation.html", inventory=inventory, form_data=form_data, item_ids=item_ids)
+            return render_template("new_reservation.html", inventory=inventory, form_data=form_data,
+                                   item_ids=item_ids, active_reservations=active_reservations)
 
         try:
             res_id = "RES-" + uuid.uuid4().hex[:6].upper()
@@ -286,7 +306,7 @@ def new_reservation():
             flash(f"Error saving reservation: {e}", "error")
 
     return render_template("new_reservation.html", inventory=inventory, form_data=form_data,
-                           item_ids=[], reservations_json=reservations_json)
+                           item_ids=[], active_reservations=active_reservations)
 
 
 # ── Reservation detail ────────────────────────────────────────────────────────
@@ -308,6 +328,23 @@ def reservation_detail(res_id):
 
             if action == "update_status":
                 new_status = request.form.get("status")
+                current_status = reservation.get("Reservation Status", "")
+
+                # Allowlist + state-machine guard
+                VALID_STATUSES = {"Upcoming", "Checked Out", "Returned", "Canceled"}
+                VALID_TRANSITIONS = {
+                    "Upcoming":    {"Checked Out", "Canceled"},
+                    "Checked Out": {"Returned", "Canceled"},
+                    "Returned":    set(),   # terminal
+                    "Canceled":    set(),   # terminal
+                }
+                if new_status not in VALID_STATUSES:
+                    flash(f"Invalid status '{new_status}'.", "error")
+                    return redirect(url_for("reservation_detail", res_id=res_id))
+                if new_status not in VALID_TRANSITIONS.get(current_status, set()):
+                    flash(f"Cannot move from '{current_status}' to '{new_status}'.", "error")
+                    return redirect(url_for("reservation_detail", res_id=res_id))
+
                 updates = {"Reservation Status": new_status}
                 item_ids = [i.strip() for i in str(reservation.get("Item IDs", "")).split(",") if i.strip()]
 
@@ -327,8 +364,10 @@ def reservation_detail(res_id):
                         db.update_inventory_item(iid, item_updates)
 
                 elif new_status == "Canceled":
+                    # Use fresh inventory to avoid stale-cache decisions
+                    fresh_inventory = db.get_inventory(force_refresh=True)
                     for iid in item_ids:
-                        item = next((i for i in inventory if str(i.get("Item ID")) == iid), None)
+                        item = next((i for i in fresh_inventory if str(i.get("Item ID")) == iid), None)
                         if item and item.get("Status") == "Rented":
                             db.update_inventory_item(iid, {"Status": "Available"})
 
@@ -340,6 +379,27 @@ def reservation_detail(res_id):
                 item_ids = request.form.getlist("item_ids")
                 start_str = request.form.get("start_datetime", "").strip()
                 end_str = request.form.get("end_datetime", "").strip()
+                edit_errors = []
+                if not item_ids:
+                    edit_errors.append("At least one item must be selected.")
+                start_dt_val = _parse_dt(start_str) if start_str else None
+                end_dt_val = _parse_dt(end_str) if end_str else None
+                if start_str and not start_dt_val:
+                    edit_errors.append("Start date/time is not a valid date.")
+                if end_str and not end_dt_val:
+                    edit_errors.append("End date/time is not a valid date.")
+                if start_dt_val and end_dt_val and end_dt_val <= start_dt_val:
+                    edit_errors.append("End time must be after start time.")
+                try:
+                    pay_amt = float(request.form.get("payment_amount", "0") or "0")
+                    if pay_amt < 0:
+                        edit_errors.append("Payment amount cannot be negative.")
+                except ValueError:
+                    edit_errors.append("Payment amount must be a number.")
+                if edit_errors:
+                    for err in edit_errors:
+                        flash(err, "error")
+                    return redirect(url_for("reservation_detail", res_id=res_id))
 
                 conflicts = db.check_conflicts(item_ids, start_str, end_str, exclude_id=res_id)
                 if conflicts:
@@ -356,7 +416,7 @@ def reservation_detail(res_id):
                     "End Date & Time": end_str,
                     "Rental Type": request.form.get("rental_type", ""),
                     "Payment Status": request.form.get("payment_status", "Unpaid"),
-                    "Payment Amount": request.form.get("payment_amount", "0"),
+                    "Payment Amount": str(pay_amt),
                     "Waiver Signed": "Yes" if request.form.get("waiver_signed") else "No",
                     "Notes": request.form.get("notes", "").strip(),
                 }
@@ -409,6 +469,7 @@ def inventory_view():
     except SheetsError as e:
         sheets_error = str(e)
 
+    settings = db.get_settings()
     return render_template(
         "inventory.html",
         items=items,
@@ -416,6 +477,7 @@ def inventory_view():
         category_filter=category_filter,
         status_filter=status_filter,
         sheets_error=sheets_error,
+        settings=settings,
     )
 
 
@@ -426,6 +488,13 @@ def add_equipment():
         item_id = request.form.get("item_id", "").strip()
         if not item_id:
             flash("Item ID is required.", "error")
+            return redirect(url_for("inventory_view"))
+        if "," in item_id:
+            flash("Item ID cannot contain a comma.", "error")
+            return redirect(url_for("inventory_view"))
+        existing = db.get_inventory()
+        if any(str(i.get("Item ID")) == item_id for i in existing):
+            flash(f"Item ID '{item_id}' already exists. Use a unique ID.", "error")
             return redirect(url_for("inventory_view"))
 
         item = {
@@ -452,6 +521,17 @@ def add_equipment():
 @login_required
 def delete_inventory(item_id):
     try:
+        # Guard: block deletion if item is referenced in any active reservation
+        active_statuses = {"Upcoming", "Checked Out"}
+        active_refs = [
+            r for r in db.get_reservations()
+            if r.get("Reservation Status") in active_statuses
+            and item_id in [i.strip() for i in str(r.get("Item IDs", "")).split(",") if i.strip()]
+        ]
+        if active_refs:
+            res_ids = ", ".join(r.get("Reservation ID", "?") for r in active_refs)
+            flash(f"Cannot delete '{item_id}' — it is part of active reservation(s): {res_ids}.", "error")
+            return redirect(url_for("inventory_view"))
         db.delete_inventory_item(item_id)
         _sync()
         flash(f"Item '{item_id}' removed from inventory.", "success")
@@ -469,7 +549,8 @@ def update_inventory(item_id):
         condition_notes = request.form.get("condition_notes")
         if status:
             updates["Status"] = status
-        if condition_notes is not None:
+        # Only overwrite notes if the user explicitly typed something
+        if condition_notes:
             updates["Condition Notes"] = condition_notes
         if updates:
             db.update_inventory_item(item_id, updates)
@@ -486,7 +567,7 @@ def update_inventory(item_id):
 @login_required
 def calendar():
     sheets_error = None
-    res_json = "[]"
+    events = []
     try:
         reservations = db.get_reservations()
         events = [
@@ -502,11 +583,10 @@ def calendar():
             for r in reservations
             if r.get("Reservation Status") not in ("Canceled",)
         ]
-        res_json = json.dumps(events)
     except SheetsError as e:
         sheets_error = str(e)
 
-    return render_template("calendar.html", reservations_json=res_json, sheets_error=sheets_error)
+    return render_template("calendar.html", cal_events=events, sheets_error=sheets_error)
 
 
 # ── API ───────────────────────────────────────────────────────────────────────
@@ -583,7 +663,7 @@ def api_pricing():
         if start_dt and end_dt and end_dt > start_dt:
             delta = end_dt - start_dt
             duration_hours = delta.total_seconds() / 3600
-            duration_days = max(1, round(duration_hours / 24))
+            duration_days = max(1, math.ceil(duration_hours / 24))
 
         for item in items:
             try:
@@ -703,16 +783,31 @@ def settings_view():
 @login_required
 def api_refresh():
     db.clear_cache()
+    # If called from a browser form, redirect back with feedback
+    referrer = request.referrer or ""
+    if "text/html" in request.accept_mimetypes.best or referrer:
+        flash("Cache cleared.", "success")
+        return redirect(referrer or url_for("settings_view"))
     return jsonify({"status": "ok", "message": "Cache cleared."})
 
 
 @app.route("/api/sync", methods=["POST"])
 @login_required
 def api_sync():
-    if not os.environ.get("GOOGLE_SHEET_ID"):
-        return jsonify({"status": "skipped", "message": "No Google Sheet configured."})
-    result = syncer.push_now(db)
-    return jsonify(result)
+    sheet_id = db.get_settings().get("sheet_id", "") or os.environ.get("GOOGLE_SHEET_ID", "")
+    if not sheet_id:
+        flash("Link a Google Sheet in Settings first.", "error")
+        return redirect(url_for("settings_view"))
+    try:
+        _sheets_client._sheet_id = sheet_id
+        result = syncer.push_now(db)
+        if result.get("status") == "ok":
+            flash(f"Synced to Google Sheets — {result['stats']['inventory_rows']} inventory, {result['stats']['reservation_rows']} reservations.", "success")
+        else:
+            flash(f"Sync error: {result.get('message', 'unknown error')}", "error")
+    except Exception as e:
+        flash(f"Sync failed: {e}", "error")
+    return redirect(url_for("settings_view"))
 
 
 # ── Template helpers ──────────────────────────────────────────────────────────

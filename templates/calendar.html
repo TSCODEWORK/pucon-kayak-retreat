@@ -30,5 +30,5 @@
 
 <div id="cal-detail"></div>
 
-<script id="cal-data" type="application/json">{{ reservations_json | safe }}</script>
+<script id="cal-data" type="application/json">{{ cal_events | tojson }}</script>
 {% endblock %}

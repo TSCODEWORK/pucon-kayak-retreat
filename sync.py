@@ -86,7 +86,9 @@ class SheetsSyncer:
         new_rows = []
         for record in rows:
             record_id = str(record.get(pk, ""))
-            row_data = [str(record.get(h, "")) for h in header_row]
+            # Use canonical headers (not the sheet's current header_row) so data
+            # always aligns with our schema even if the sheet has extra legacy columns.
+            row_data = [str(record.get(h, "")) for h in headers]
 
             if record_id in sheet_ids:
                 # Update in place

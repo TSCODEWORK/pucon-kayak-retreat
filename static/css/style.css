@@ -589,3 +589,6 @@ tr:hover td { background: var(--brand-50); }
 @media (max-width: 640px) {
   .drp-months { grid-template-columns:1fr; gap:1.5rem; }
 }
+@media (max-width: 700px) {
+  .step3-grid { grid-template-columns: 1fr !important; }
+}

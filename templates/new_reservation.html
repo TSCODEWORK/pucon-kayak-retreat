@@ -28,10 +28,6 @@
   </div>
 </div>
 
-{% for cat, msg in get_flashed_messages(with_categories=true) %}
-  <div class="alert alert-{{ cat }}">{{ msg }}</div>
-{% endfor %}
-
 <form method="POST" id="res-form">
   <!-- Hidden fields populated by JS before submit -->
   <input type="hidden" name="start_datetime" id="f-start">
@@ -148,7 +144,7 @@
        STEP 3 — Customer & Confirm
   ══════════════════════════════════════════════════ -->
   <div id="step-3" class="wizard-step">
-    <div style="display:grid;grid-template-columns:1fr 320px;gap:1.25rem;align-items:start">
+    <div style="display:grid;grid-template-columns:1fr minmax(0,320px);gap:1.25rem;align-items:start" class="step3-grid">
 
       <div style="display:flex;flex-direction:column;gap:1.25rem">
 
@@ -236,7 +232,7 @@
 
 <!-- Data for JS -->
 <script id="inv-data"  type="application/json">{{ inventory | tojson }}</script>
-<script id="res-data"  type="application/json">{{ reservations_json | safe }}</script>
+<script id="res-data"  type="application/json">{{ active_reservations | tojson }}</script>
 {% endblock %}
 
 {% block scripts %}
@@ -429,7 +425,7 @@ function renderDRP() {
   }
 }
 
-function updateHiddenFields() {
+function updateHiddenFields(preserveDropdown) {
   if (!drpStart||!drpEnd) return;
   const st = document.getElementById('drp-start-time').value||'09:00';
   const et = document.getElementById('drp-end-time').value||'17:00';
@@ -440,9 +436,14 @@ function updateHiddenFields() {
   const [eh,em] = et.split(':').map(Number);
   const durH = (eh+em/60)-(sh+sm/60)+(nights*24);
   const rtype = nights>0?'Multi-Day':durH<=4?'Hourly':durH<=6?'Half-Day':'Full-Day';
-  document.getElementById('f-rental-type').value = rtype;
   const sel = document.getElementById('rental-type-sel');
-  if (sel) sel.value = rtype;
+  if (preserveDropdown && sel && sel.value) {
+    // On step 3, sync hidden field FROM the dropdown — don't overwrite user's choice
+    document.getElementById('f-rental-type').value = sel.value;
+  } else {
+    document.getElementById('f-rental-type').value = rtype;
+    if (sel) sel.value = rtype;
+  }
 }
 
 // ── Step navigation ────────────────────────────────────────────────────────
@@ -457,7 +458,7 @@ function goStep(n) {
   const labels = ['Select dates','Choose kayaks','Customer info & confirm'];
   document.getElementById('step-subtitle').textContent = `Step ${n} of 3 — ${labels[n-1]}`;
   if (n===2) renderEquipment();
-  if (n===3) { updateHiddenFields(); renderSummary(); updatePricing(); setTimeout(()=>document.getElementById('customer-name-input')?.focus(),100); }
+  if (n===3) { updateHiddenFields(true); renderSummary(); updatePricing(); setTimeout(()=>document.getElementById('customer-name-input')?.focus(),100); }
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -484,7 +485,7 @@ function renderEquipment() {
       <div class="item-select-grid">`;
     for (const item of items) {
       const id  = item['Item ID'];
-      const unavail = booked.has(id) || item['Status']==='Maintenance';
+      const unavail = booked.has(id) || item['Status']==='Maintenance' || item['Status']==='Rented';
       const sel = selectedItems.has(id);
       const sz  = item['Size']||'';
       const szBadge = sz?`<span class="size-badge size-${sz.toLowerCase()}">${sz}</span>`:'';
