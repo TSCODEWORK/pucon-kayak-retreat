@@ -346,7 +346,9 @@ function drpClickDay(key) {
 }
 
 function drpHoverDay(key) {
-  if (drpStart && !drpEnd) { drpHover = key ? parseDate(key) : null; renderDRP(); }
+  // Hover re-render removed — it destroyed day-cell DOM nodes between mousedown and
+  // mouseup, preventing the click event from firing on the end-date selection.
+  // CSS :hover on .drp-day handles the visual feedback without touching the DOM.
 }
 
 function renderMonth(idx, year, month) {
