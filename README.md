@@ -1,170 +1,120 @@
-# Pucon Kayak Retreat — Rental Tracker
+# Pucon Kayak Retreat — Staff App
 
-A local web app for managing kayak rentals. Google Sheets acts as the database so staff can also view and edit data directly in the sheet.
-
-Available as a **standalone Mac app** (no Python install needed) or as a Python script.
+A simple app for managing kayak rentals: reservations, equipment inventory, check-out/check-in, and optional Google Sheets backup.
 
 ---
 
-## Option A — Mac App (recommended)
+## What this app does
 
-### Install
-1. Open `dist/PuconKayakRetreat.dmg`
-2. Drag **Pucon Kayak Retreat** → **Applications**
-3. **First launch only:** right-click the app → **Open** (bypasses macOS Gatekeeper for unsigned apps)
-
-### Connect to Google Sheets
-The app stores its config here — open Finder and press `⌘⇧G`, then type:
-```
-~/Library/Application Support/PuconKayakRetreat/
-```
-Two files go in that folder:
-
-| File | What it is |
-|---|---|
-| `.env` | Created automatically on first launch — edit it with your Sheet ID and PIN |
-| `credentials.json` | Your Google service account JSON — copy it here |
-
-Edit `.env` with any text editor:
-```
-GOOGLE_SHEET_ID=1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms
-GOOGLE_CREDENTIALS_FILE=credentials.json
-APP_PIN=1234
-```
-Restart the app after editing.
-
-### Rebuild the app (after code changes)
-```bash
-bash build.sh
-```
-Output is `dist/PuconKayakRetreat.dmg` (~31 MB).
+- Track reservations from booking to check-out to return
+- Manage your fleet of kayaks, paddles, PFDs, and other gear
+- See today's pickups and expected returns at a glance
+- Optionally back up all data to a Google Sheet that you own
 
 ---
 
-## Option B — Run as Python script (development)
+## Requirements
 
-### 1. Install dependencies
+**Python 3.9 or later.** That's it.
 
-```bash
-cd pucon-kayak-retreat
-python3 -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+To check if you already have Python: open Terminal (search "Terminal" in Spotlight) and type:
 ```
-
-### 2. Set up Google Sheets API credentials
-
-#### Create a service account
-1. Go to [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services → Credentials**.
-2. Click **Create Credentials → Service account**. Give it any name.
-3. On the service account page, go to **Keys → Add Key → Create new key → JSON**. Download the file.
-4. Rename the downloaded file to `credentials.json` and place it in the `pucon-kayak-retreat/` folder.
-5. Enable the **Google Sheets API** and **Google Drive API** for your project (search for them in **APIs & Services → Library**).
-
-#### Share your Sheet with the service account
-1. Open your Google Sheet.
-2. Click **Share** and add the service account email (looks like `name@project-id.iam.gserviceaccount.com`) as an **Editor**.
-
-### 3. Configure environment variables
-
-```bash
-cp .env.example .env
+python3 --version
 ```
-
-Open `.env` and fill in:
-
-```
-GOOGLE_SHEET_ID=1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms   # from the Sheet URL
-GOOGLE_CREDENTIALS_FILE=credentials.json
-APP_PIN=1234          # change to your preferred staff PIN
-SECRET_KEY=some-random-string-here
-```
-
-The Sheet ID is the long string in the URL between `/d/` and `/edit`.
-
-### 4. Set up your Google Sheet
-
-Your sheet needs two tabs named exactly **`Inventory`** and **`Reservations`**.
-
-**Option A — Sample data (recommended for testing):**
-```bash
-python setup_sample_data.py
-```
-This creates both tabs with headers and populates them with sample kayaks and reservations.
-
-**Option B — Set up headers manually:**
-Create the tabs yourself and add the headers from the sheet structure below.
-
-### 5. Run the app
-
-```bash
-python app.py
-```
-
-Open **http://localhost:5000** in a browser. Enter your PIN to sign in.
+If it says `Python 3.9.x` or higher, you're good. If not, download it from **https://www.python.org/downloads/** — click the big yellow button, run the installer, and you're done.
 
 ---
 
-## Google Sheet structure
+## First-time setup (do this once)
 
-### Inventory tab
-| Column | Description |
-|---|---|
-| Item ID | Unique ID, e.g. `SKAYAK-01` |
-| Category | `Single Kayak`, `Tandem Kayak`, `Paddle`, `PFD`, `Helmet`, `Dry Bag` |
-| Name/Description | Human-readable name shown to staff |
-| Status | `Available`, `Rented`, `Maintenance` |
-| Condition Notes | Free-text condition notes |
-| Hourly Rate | Price per hour ($) |
-| Half-Day Rate | Price for a half-day ($) |
-| Full-Day Rate | Price for a full day ($) |
-| Multi-Day Rate | Price per day for multi-day rentals ($) |
+1. Open **Terminal** (Cmd+Space, type "Terminal", press Enter)
+2. Drag the app folder into the Terminal window — it will type the path for you
+3. Press Enter to go into that folder, then run:
 
-### Reservations tab
-| Column | Description |
-|---|---|
-| Reservation ID | Auto-generated, e.g. `RES-A1B2C3` |
-| Customer Name | |
-| Customer Phone | |
-| Customer Email | |
-| Item IDs | Comma-separated Item IDs, e.g. `SKAYAK-01, PADDLE-01, PFD-02` |
-| Start Date & Time | ISO format: `2025-07-04T09:00` |
-| End Date & Time | ISO format: `2025-07-04T17:00` |
-| Rental Type | `Hourly`, `Half-Day`, `Full-Day`, `Multi-Day` |
-| Payment Status | `Unpaid`, `Deposit Paid`, `Paid in Full` |
-| Payment Amount | Dollar amount |
-| Waiver Signed | `Yes` or `No` |
-| Reservation Status | `Upcoming`, `Checked Out`, `Returned`, `Canceled` |
-| Notes | Free text |
-| Created At | Auto-set timestamp |
+```
+./setup.sh
+```
+
+This takes about a minute. It installs everything the app needs. You only need to do this once.
 
 ---
 
-## Features
+## Starting the app every day
 
-| Feature | Description |
-|---|---|
-| **Dashboard** | Today's pickups, expected returns, overdue items, fleet stats |
-| **New Reservation** | Multi-item booking with live conflict detection and auto-pricing |
-| **Reservations list** | Search by name/email/ID, filter by status/date |
-| **Reservation detail** | View/edit details, check out, return (with condition notes), cancel |
-| **Inventory** | Card view with quick status changes and condition note editing |
-| **Calendar** | Month grid with day-click detail panel |
+**Option A — Double-click** `run.command` in Finder. The app opens in your browser automatically.
+
+> The first time you double-click it, macOS may say "cannot be opened because it is from an unidentified developer." If that happens: right-click (or Control-click) the file → **Open** → **Open** again in the dialog. You only need to do this once.
+
+**Option B — Terminal:**
+```
+./start.sh
+```
+
+The app opens at **http://localhost:5000** in your browser.
 
 ---
 
-## Running on a tablet / other computers
+## Stopping the app
 
-The app binds to `0.0.0.0:5000` so any device on the same WiFi network can reach it at `http://<your-computer-ip>:5000`. Find your IP with `ifconfig` (Mac/Linux) or `ipconfig` (Windows).
+Go back to the Terminal window and press **Ctrl+C**. That's it.
+
+---
+
+## Logging in
+
+The default PIN is **1234**. You can change it in **Settings → Change PIN**.
+
+---
+
+## Google Sheets backup (optional)
+
+If you want your data backed up to a Google Sheet:
+
+1. Go to **Settings** in the app
+2. In the "Google Sheets" section, paste the link to your Google Sheet
+3. Click **Save**
+4. Click **↑ Push to Google Sheets** to export your current data
+
+The app will automatically sync changes to the Sheet every 5 minutes, and you can manually pull Sheet changes back with **↓ Pull from Google Sheets**.
+
+> **Note:** Google Sheets sync requires a `credentials.json` file from Google Cloud Console. Ask your setup person for this file and place it in the same folder as the app.
 
 ---
 
 ## Troubleshooting
 
-**"Credentials file not found"** — Make sure `credentials.json` is in the project folder and `GOOGLE_CREDENTIALS_FILE` in `.env` matches the filename.
+**"Permission denied" when running setup.sh or start.sh**
+```
+chmod +x setup.sh start.sh run.command
+```
+Then try again.
 
-**"Worksheet not found"** — Your sheet must have tabs named exactly `Inventory` and `Reservations` (case-sensitive). Run `setup_sample_data.py` to create them automatically.
+**The app opens but shows an error about the database**
+Delete the file `rental.db` in the app folder and restart. (This resets all data — only do this if you don't have any important bookings yet.)
 
-**"Cannot connect to Google Sheets"** — Check that the service account email has been shared on the Sheet as an Editor, and that both Google Sheets API and Google Drive API are enabled in Google Cloud Console.
+**"Python not found" error**
+Install Python 3.9+ from https://www.python.org/downloads/ and run `./setup.sh` again.
 
-**Port already in use** — Change the port: `python app.py` → edit the last line of `app.py` to use a different port, e.g. `port=5001`.
+**Google Sheets sync isn't working**
+- Make sure `credentials.json` is in the app folder
+- Go to Settings and check that the Sheet link is saved correctly
+- Check your internet connection
+- Click **↓ Pull from Google Sheets** to retry manually
+
+**The app stopped unexpectedly**
+Just run `./start.sh` (or double-click `run.command`) again. Your data is saved automatically.
+
+---
+
+## Day-to-day workflow
+
+1. Start the app (`run.command` or `./start.sh`)
+2. The **Dashboard** shows today's pickups and expected returns
+3. When a customer arrives, open their reservation → **Check Out**
+4. When gear is returned, open the reservation → **Mark Returned**
+5. Inventory status updates automatically
+6. Stop the app when done (Ctrl+C in Terminal)
+
+---
+
+*Built for Pucon Kayak Retreat staff use.*

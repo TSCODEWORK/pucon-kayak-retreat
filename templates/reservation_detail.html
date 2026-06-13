@@ -105,7 +105,7 @@
               {% set ps = reservation.get('Payment Status','') %}
               <span class="badge badge-{{ 'paid' if ps == 'Paid in Full' else 'deposit' if ps == 'Deposit Paid' else 'unpaid' }}">{{ ps }}</span>
               {% if reservation.get('Payment Amount') %}
-                · ${{ reservation.get('Payment Amount') }}
+                · {{ reservation.get('Payment Amount') | fmt_currency }}
               {% endif %}
             </span>
           </div>

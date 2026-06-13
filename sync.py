@@ -99,3 +99,35 @@ class SheetsSyncer:
 
         if new_rows:
             ws.append_rows(new_rows)
+
+    def pull_from_sheets(self, db_client) -> dict:
+        """Pull Sheet data into SQLite (INSERT OR REPLACE — safe to repeat)."""
+        inv_pulled = 0
+        res_pulled = 0
+        try:
+            # Pull inventory
+            try:
+                ws = self._sheets._get_ws("Inventory")
+                rows = ws.get_all_records()
+                for row in rows:
+                    if row.get("Item ID"):
+                        db_client.add_inventory_item(row)
+                        inv_pulled += 1
+            except SheetsError:
+                pass  # Tab may not exist yet
+
+            # Pull reservations
+            try:
+                ws = self._sheets._get_ws("Reservations")
+                rows = ws.get_all_records()
+                for row in rows:
+                    if row.get("Reservation ID"):
+                        db_client.add_reservation(row)
+                        res_pulled += 1
+            except SheetsError:
+                pass
+
+            db_client.clear_cache()
+        except Exception as e:
+            raise SheetsError(str(e))
+        return {"inventory_pulled": inv_pulled, "reservations_pulled": res_pulled}

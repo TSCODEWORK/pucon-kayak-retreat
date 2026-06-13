@@ -4,7 +4,7 @@
 {% block content %}
 <div class="page-header">
   <div class="page-title">
-    <h1>Today's Overview</h1>
+    <h1>Dashboard</h1>
     <div class="page-subtitle">{{ today.strftime("%A, %B %-d, %Y") }}</div>
   </div>
   <div class="btn-group">
@@ -16,9 +16,21 @@
 {% if sheets_error %}
   <div class="alert alert-error" style="margin-bottom:1.25rem">
     <strong>Cannot reach Google Sheets:</strong> {{ sheets_error }}
-    <br><span style="font-size:.85rem;margin-top:.25rem;display:block">Check your credentials and Sheet ID in <code>.env</code>, then <a href="/" style="color:inherit;text-decoration:underline">retry</a>.</span>
+    <br><span style="font-size:.85rem;margin-top:.25rem;display:block">Check your credentials and Sheet ID in Settings, then <a href="/" style="color:inherit;text-decoration:underline">retry</a>.</span>
   </div>
 {% endif %}
+
+<!-- Day / Week / Month tabs -->
+<div class="view-tabs" style="display:flex;gap:.5rem;margin-bottom:1.25rem">
+  <a href="?view=day"   class="btn {% if view == 'day'   %}btn-primary{% else %}btn-ghost{% endif %}">Day</a>
+  <a href="?view=week"  class="btn {% if view == 'week'  %}btn-primary{% else %}btn-ghost{% endif %}">Week</a>
+  <a href="?view=month" class="btn {% if view == 'month' %}btn-primary{% else %}btn-ghost{% endif %}">Month</a>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     DAY VIEW
+══════════════════════════════════════════════════════════ -->
+{% if view == 'day' %}
 
 <!-- Stats -->
 <div class="stats-grid">
@@ -142,6 +154,143 @@
   </div>
   {% endif %}
 </div>
+
+<!-- ══════════════════════════════════════════════════════════
+     WEEK VIEW
+══════════════════════════════════════════════════════════ -->
+{% elif view == 'week' %}
+
+<div class="card">
+  <div class="card-header">
+    <h3>Next 7 Days</h3>
+    <span class="text-sm text-muted">Pickups &amp; returns by day</span>
+  </div>
+  <div class="card-body" style="padding:0">
+    <table style="width:100%;border-collapse:collapse;font-size:.9rem">
+      <thead>
+        <tr style="border-bottom:2px solid var(--border);background:var(--slate-50)">
+          <th style="text-align:left;padding:.6rem 1rem;font-weight:600;color:var(--text-muted)">Date</th>
+          <th style="text-align:center;padding:.6rem .75rem;font-weight:600;color:var(--text-muted)">Pickups</th>
+          <th style="text-align:center;padding:.6rem .75rem;font-weight:600;color:var(--text-muted)">Returns</th>
+          <th style="text-align:center;padding:.6rem .75rem;font-weight:600;color:var(--text-muted)">Total Activity</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for day in week_days %}
+          <tr style="border-bottom:1px solid var(--border);{% if day.is_today %}background:var(--brand-50,#f0f9ff){% endif %}">
+            <td style="padding:.7rem 1rem;font-weight:{% if day.is_today %}700{% else %}400{% endif %}">
+              {{ day.full_label }}
+              {% if day.is_today %}<span class="badge badge-upcoming" style="font-size:.65rem;margin-left:.4rem">Today</span>{% endif %}
+            </td>
+            <td style="text-align:center;padding:.7rem .75rem">
+              {% if day.pickups > 0 %}
+                <span style="color:var(--teal-600);font-weight:600">{{ day.pickups }}</span>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td style="text-align:center;padding:.7rem .75rem">
+              {% if day.returns > 0 %}
+                <span style="color:var(--green-600);font-weight:600">{{ day.returns }}</span>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td style="text-align:center;padding:.7rem .75rem">
+              {% if day.count > 0 %}
+                <a href="{{ url_for('reservations') }}" class="text-sm" style="color:var(--brand-600)">{{ day.count }} reservation{{ 's' if day.count != 1 }}</a>
+              {% else %}
+                <span class="text-muted text-sm">Quiet</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4" class="empty-state" style="padding:2rem">No data available.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     MONTH VIEW
+══════════════════════════════════════════════════════════ -->
+{% elif view == 'month' %}
+
+<!-- Month stat cards -->
+<div class="stats-grid" style="margin-bottom:1.25rem">
+  <div class="stat-card">
+    <div class="stat-label">Total Reservations</div>
+    <div class="stat-value teal">{{ month_stats.total_reservations }}</div>
+    <div class="stat-sub">{{ month_stats.month_label }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Busiest Day</div>
+    <div class="stat-value amber">{{ month_stats.busiest_day }}</div>
+    <div class="stat-sub">{{ month_stats.busiest_count }} reservation{{ 's' if month_stats.busiest_count != 1 }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Items Rented</div>
+    <div class="stat-value teal">{{ month_stats.items_rented }}</div>
+    <div class="stat-sub">unique pieces of gear</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Fleet Utilization</div>
+    <div class="stat-value green">{{ month_stats.utilization }}%</div>
+    <div class="stat-sub">of inventory rented this month</div>
+  </div>
+</div>
+
+<!-- Calendar grid -->
+<div class="card">
+  <div class="card-header"><h3>{{ month_stats.month_label }} — Reservation Activity</h3></div>
+  <div class="card-body">
+    {% set first_weekday = month_days[0].date.weekday() if month_days else 0 %}
+    <!-- weekday header: Mon–Sun -->
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:.25rem;margin-bottom:.5rem">
+      {% for day_name in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
+        <div style="text-align:center;font-size:.75rem;font-weight:600;color:var(--text-muted);padding:.25rem 0">{{ day_name }}</div>
+      {% endfor %}
+    </div>
+    <!-- calendar cells -->
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:.25rem">
+      <!-- empty offset cells for first week -->
+      {% for _ in range(first_weekday) %}
+        <div></div>
+      {% endfor %}
+      {% for d in month_days %}
+        {% set intensity = '' %}
+        {% if d.count == 0 %}{% set intensity = '' %}
+        {% elif d.count == 1 %}{% set intensity = 'var(--teal-100,#ccfbf1)' %}
+        {% elif d.count <= 3 %}{% set intensity = 'var(--teal-200,#99f6e4)' %}
+        {% else %}{% set intensity = 'var(--teal-400,#2dd4bf)' %}
+        {% endif %}
+        <div style="
+          text-align:center;
+          padding:.4rem .2rem;
+          border-radius:var(--radius-sm);
+          border:1px solid {% if d.is_today %}var(--brand-600){% else %}var(--border){% endif %};
+          background:{{ intensity if d.count > 0 else ('var(--slate-50)' if not d.is_past else 'transparent') }};
+          font-size:.8rem;
+          {% if d.is_today %}font-weight:700;{% endif %}
+          {% if d.is_past and not d.is_today %}opacity:.65;{% endif %}
+        ">
+          <div style="color:{% if d.is_today %}var(--brand-600){% else %}var(--text-primary){% endif %}">{{ d.day_num }}</div>
+          {% if d.count > 0 %}
+            <div style="font-size:.65rem;color:var(--teal-700,#0f766e);font-weight:600;margin-top:.1rem">{{ d.count }}</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+    <div style="margin-top:.75rem;display:flex;gap:1rem;font-size:.75rem;color:var(--text-muted)">
+      <span>■ <span style="color:var(--teal-100)">■</span> 1 reservation</span>
+      <span><span style="color:var(--teal-200)">■</span> 2–3</span>
+      <span><span style="color:var(--teal-400)">■</span> 4+</span>
+    </div>
+  </div>
+</div>
+
+{% endif %}
 {% endblock %}
 
 {% block scripts %}

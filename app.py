@@ -4,6 +4,8 @@ import uuid
 import json
 import math
 import functools
+import threading
+import time
 from pathlib import Path
 from datetime import datetime, date
 from flask import (
@@ -57,6 +59,30 @@ syncer = SheetsSyncer(_sheets_client)
 
 _last_sync_sheet_id = ""
 
+
+def _background_pull_loop():
+    """Pull from Google Sheets every 5 minutes in a background daemon thread."""
+    time.sleep(30)  # brief startup delay
+    while True:
+        try:
+            sheet_id = db.get_settings().get("sheet_id", "") or os.environ.get("GOOGLE_SHEET_ID", "")
+            if sheet_id:
+                _sheets_client._sheet_id = sheet_id
+                _sheets_client._spreadsheet = None
+                syncer.pull_from_sheets(db)
+                db.update_settings({"last_synced": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+                log.info("Background pull from Sheets complete.")
+        except Exception as e:
+            log.warning("Background Sheets pull failed (non-fatal): %s", e)
+        time.sleep(300)  # 5 minutes
+
+
+_pull_thread = threading.Thread(target=_background_pull_loop, daemon=True)
+_pull_thread.start()
+
+log = __import__("logging").getLogger(__name__)
+
+
 def _sync():
     """Push to Sheets in background after every write."""
     global _last_sync_sheet_id
@@ -109,21 +135,45 @@ def logout():
 @app.route("/")
 @login_required
 def dashboard():
+    from datetime import timedelta, date as date_type
+    import calendar
+
+    view = request.args.get("view", "day")
     sheets_error = None
+    today = date.today()
+
+    # ── Shared inventory counts ────────────────────────────────────────────────
+    total_items = rented_items = available_items = maintenance_items = 0
+
+    # ── Day-view data ──────────────────────────────────────────────────────────
     today_pickups = []
     today_returns = []
     overdue = []
-    total_items = rented_items = available_items = maintenance_items = 0
+
+    # ── Week-view data ─────────────────────────────────────────────────────────
+    week_days = []  # list of dicts: {date, label, pickups, returns, reservations}
+
+    # ── Month-view data ────────────────────────────────────────────────────────
+    month_stats = {}   # total_reservations, busiest_day, items_rented, utilization
+    month_days = []    # list of {date, label, count}
 
     try:
         reservations = db.get_reservations()
         inventory = db.get_inventory()
-        today = date.today()
 
-        for r in reservations:
+        total_items = len(inventory)
+        rented_items = sum(1 for i in inventory if i.get("Status") == "Rented")
+        available_items = sum(1 for i in inventory if i.get("Status") == "Available")
+        maintenance_items = sum(1 for i in inventory if i.get("Status") == "Maintenance")
+
+        active_reservations = [
+            r for r in reservations
+            if r.get("Reservation Status", "") not in ("Canceled", "Returned")
+        ]
+
+        # Day view
+        for r in active_reservations:
             status = r.get("Reservation Status", "")
-            if status in ("Canceled", "Returned"):
-                continue
             start = _parse_dt(r.get("Start Date & Time", ""))
             end = _parse_dt(r.get("End Date & Time", ""))
 
@@ -135,24 +185,122 @@ def dashboard():
                 elif end.date() < today and status == "Checked Out":
                     overdue.append(r)
 
-        total_items = len(inventory)
-        rented_items = sum(1 for i in inventory if i.get("Status") == "Rented")
-        available_items = sum(1 for i in inventory if i.get("Status") == "Available")
-        maintenance_items = sum(1 for i in inventory if i.get("Status") == "Maintenance")
+        # Week view
+        if view == "week":
+            for offset in range(7):
+                day = today + timedelta(days=offset)
+                day_pickups = []
+                day_returns = []
+                day_reservations = []
+                for r in active_reservations:
+                    status = r.get("Reservation Status", "")
+                    start = _parse_dt(r.get("Start Date & Time", ""))
+                    end = _parse_dt(r.get("End Date & Time", ""))
+                    is_pickup = start and start.date() == day and status == "Upcoming"
+                    is_return = end and end.date() == day and status == "Checked Out"
+                    if is_pickup:
+                        day_pickups.append(r)
+                    if is_return:
+                        day_returns.append(r)
+                    if is_pickup or is_return:
+                        day_reservations.append(r)
+                label = "Today" if day == today else day.strftime("%a %-d")
+                week_days.append({
+                    "date": day,
+                    "label": label,
+                    "full_label": day.strftime("%A, %B %-d"),
+                    "pickups": len(day_pickups),
+                    "returns": len(day_returns),
+                    "count": len(day_reservations),
+                    "is_today": day == today,
+                })
+
+        # Month view
+        if view == "month":
+            year, month = today.year, today.month
+            _, days_in_month = calendar.monthrange(year, month)
+            month_start = date_type(year, month, 1)
+            month_end = date_type(year, month, days_in_month)
+
+            day_counts = {}
+            item_ids_this_month = set()
+            total_month_res = 0
+
+            for r in reservations:  # include all statuses for history
+                status = r.get("Reservation Status", "")
+                if status == "Canceled":
+                    continue
+                start = _parse_dt(r.get("Start Date & Time", ""))
+                end = _parse_dt(r.get("End Date & Time", ""))
+                if not start:
+                    continue
+                # Count reservation if it overlaps the month at all
+                r_start = start.date()
+                r_end = end.date() if end else r_start
+                if r_end < month_start or r_start > month_end:
+                    continue
+                total_month_res += 1
+                # Attribute to start day (within this month)
+                attr_day = max(r_start, month_start)
+                day_counts[attr_day] = day_counts.get(attr_day, 0) + 1
+                # Collect item IDs
+                raw_ids = r.get("Item IDs", "")
+                for iid in str(raw_ids).split(","):
+                    iid = iid.strip()
+                    if iid:
+                        item_ids_this_month.add(iid)
+
+            busiest_day = None
+            busiest_count = 0
+            for d, cnt in day_counts.items():
+                if cnt > busiest_count:
+                    busiest_count = cnt
+                    busiest_day = d
+
+            utilization = round(len(item_ids_this_month) / total_items * 100) if total_items else 0
+
+            month_stats = {
+                "total_reservations": total_month_res,
+                "busiest_day": busiest_day.strftime("%b %-d") if busiest_day else "—",
+                "busiest_count": busiest_count,
+                "items_rented": len(item_ids_this_month),
+                "utilization": utilization,
+                "month_label": today.strftime("%B %Y"),
+            }
+
+            for d in range(1, days_in_month + 1):
+                day = date_type(year, month, d)
+                count = day_counts.get(day, 0)
+                month_days.append({
+                    "date": day,
+                    "day_num": d,
+                    "label": day.strftime("%a"),
+                    "count": count,
+                    "is_today": day == today,
+                    "is_past": day < today,
+                })
 
     except SheetsError as e:
         sheets_error = str(e)
 
     return render_template(
         "dashboard.html",
-        today=date.today(),
+        view=view,
+        today=today,
+        # day view
         today_pickups=today_pickups,
         today_returns=today_returns,
         overdue=overdue,
+        # inventory
         total_items=total_items,
         rented_items=rented_items,
         available_items=available_items,
         maintenance_items=maintenance_items,
+        # week view
+        week_days=week_days,
+        # month view
+        month_stats=month_stats,
+        month_days=month_days,
         sheets_error=sheets_error,
     )
 
@@ -776,7 +924,33 @@ def settings_view():
     settings = db.get_settings()
     inventory = db.get_inventory()
     categories = sorted({i.get("Category", "") for i in inventory if i.get("Category")})
-    return render_template("settings.html", settings=settings, categories=categories)
+    # Build "last synced X minutes ago" label
+    last_synced = settings.get("last_synced", "")
+    last_synced_label = "Never"
+    if last_synced:
+        try:
+            ls_dt = _parse_dt(last_synced)
+            if ls_dt:
+                delta = int((datetime.now() - ls_dt).total_seconds() / 60)
+                if delta < 1:
+                    last_synced_label = "just now"
+                elif delta == 1:
+                    last_synced_label = "1 minute ago"
+                elif delta < 60:
+                    last_synced_label = f"{delta} minutes ago"
+                else:
+                    last_synced_label = ls_dt.strftime("%b %d, %Y %I:%M %p")
+        except Exception:
+            last_synced_label = last_synced
+    sheet_id = settings.get("sheet_id", "")
+    return render_template(
+        "settings.html",
+        settings=settings,
+        categories=categories,
+        last_synced=last_synced,
+        last_synced_label=last_synced_label,
+        sheet_id=sheet_id,
+    )
 
 
 @app.route("/api/refresh", methods=["POST"])
@@ -810,6 +984,36 @@ def api_sync():
     return redirect(url_for("settings_view"))
 
 
+@app.route("/api/pull", methods=["POST"])
+@login_required
+def api_pull():
+    sheet_id = db.get_settings().get("sheet_id", "") or os.environ.get("GOOGLE_SHEET_ID", "")
+    if not sheet_id:
+        flash("Link a Google Sheet in Settings first.", "error")
+        return redirect(url_for("settings_view"))
+    try:
+        _sheets_client._sheet_id = sheet_id
+        _sheets_client._spreadsheet = None
+        result = syncer.pull_from_sheets(db)
+        db.update_settings({"last_synced": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+        flash(
+            f"Pulled from Google Sheets — {result['inventory_pulled']} inventory rows, "
+            f"{result['reservations_pulled']} reservation rows imported.",
+            "success",
+        )
+    except Exception as e:
+        msg = str(e)
+        if "credentials" in msg.lower() or "not found" in msg.lower():
+            flash("Google credentials file not found — see the README for setup instructions.", "error")
+        elif "quota" in msg.lower() or "network" in msg.lower() or "connect" in msg.lower():
+            flash("Could not reach Google Sheets — check your internet connection and try again.", "error")
+        elif "sheet" in msg.lower() or "spreadsheet" in msg.lower():
+            flash("Sheet not found — double-check your Google Sheet link in Settings.", "error")
+        else:
+            flash(f"Pull failed: {e}", "error")
+    return redirect(url_for("settings_view"))
+
+
 # ── Template helpers ──────────────────────────────────────────────────────────
 
 def fmt_datetime(s):
@@ -824,8 +1028,15 @@ def fmt_date(s):
         return s or "—"
     return dt.strftime("%b %d, %Y")
 
+def fmt_currency(v):
+    try:
+        return f"${float(v):.2f}"
+    except (TypeError, ValueError):
+        return f"${v}" if v else "—"
+
 app.jinja_env.filters["fmt_datetime"] = fmt_datetime
 app.jinja_env.filters["fmt_date"] = fmt_date
+app.jinja_env.filters["fmt_currency"] = fmt_currency
 app.jinja_env.globals["now"] = datetime.now
 
 

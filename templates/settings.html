@@ -196,11 +196,23 @@
         <div class="text-sm text-muted">
           {% if sheet_id %}
             Sheet linked: <span style="font-family:monospace">{{ sheet_id[:20] }}…</span>
+            <br>
+            {% if last_synced %}
+              <span style="color:var(--green-600)">✓ Last synced: {{ last_synced_label }}</span>
+            {% else %}
+              <span style="color:var(--text-muted)">Not synced yet — push or pull to sync.</span>
+            {% endif %}
           {% else %}
             No sheet linked yet — paste your editor URL above.
           {% endif %}
         </div>
-        <div style="margin-left:auto;display:flex;gap:.75rem">
+        <div style="margin-left:auto;display:flex;gap:.75rem;flex-wrap:wrap">
+          <form method="POST" action="{{ url_for('api_pull') }}"
+            onsubmit="{% if not sheet_id %}alert('Link a Google Sheet first.'); return false;{% endif %}">
+            <button type="submit" class="btn btn-ghost" {% if not sheet_id %}title="Link a sheet first"{% endif %}>
+              ↓ Pull from Google Sheets
+            </button>
+          </form>
           <form method="POST" action="{{ url_for('api_sync') }}"
             onsubmit="{% if not sheet_id %}alert('Link a Google Sheet first.'); return false;{% endif %}">
             <button type="submit" class="btn btn-ghost" {% if not sheet_id %}title="Link a sheet first"{% endif %}>

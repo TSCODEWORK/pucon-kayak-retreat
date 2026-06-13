@@ -95,7 +95,7 @@
                 <span class="badge badge-unpaid">Unpaid</span>
               {% endif %}
               {% if r.get('Payment Amount') %}
-                <div style="font-size:.75rem;color:var(--text-muted);margin-top:.15rem">${{ r.get('Payment Amount') }}</div>
+                <div style="font-size:.75rem;color:var(--text-muted);margin-top:.15rem">{{ r.get('Payment Amount') | fmt_currency }}</div>
               {% endif %}
             </td>
             <td style="text-align:center">
