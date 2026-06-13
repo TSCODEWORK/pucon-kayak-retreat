@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% block title %}Inventory — Pucon Kayak Retreat{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">
+    <h1>Inventory</h1>
+    <div class="page-subtitle">{{ items | length }} item{{ 's' if items | length != 1 }} shown</div>
+  </div>
+  <div class="btn-group">
+    <button class="btn btn-ghost btn-sm" onclick="toggleSizingGuide()">📏 Sizing Guide</button>
+    <button class="btn btn-primary" onclick="toggleAddForm()">+ Add Equipment</button>
+  </div>
+</div>
+
+<!-- ── Sizing guide (collapsible) ── -->
+<div id="sizing-guide" class="hidden" style="margin-bottom:1.1rem">
+  <div class="card">
+    <div class="card-header">
+      <h3>Sizing Guide — Updated April 30, 2026</h3>
+      <button class="btn btn-ghost btn-sm" onclick="toggleSizingGuide()">✕ Close</button>
+    </div>
+    <div class="card-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1.25rem">
+      <div>
+        <div class="form-section-title" style="color:var(--brand-dark)">Size Ranges</div>
+        <div style="display:flex;flex-direction:column;gap:.4rem;font-size:.875rem">
+          <div><span class="size-badge size-s">S</span> under 70 kg / 155 lbs</div>
+          <div><span class="size-badge size-m">M</span> 70–90 kg / 155–200 lbs</div>
+          <div><span class="size-badge size-l">L</span> 90+ kg / 200+ lbs</div>
+        </div>
+        <div style="font-size:.78rem;color:var(--text-muted);margin-top:.75rem;font-style:italic">
+          Weight ranges may vary slightly by model.<br>
+          Beginners → select NO PREFERENCE so guides can match.
+        </div>
+      </div>
+      {% set brands_in_inventory = items | map(attribute='Category') | select | unique | list | sort %}
+      {% for brand in brands_in_inventory %}
+        {% set brand_items = items | selectattr('Category','equalto',brand) | list %}
+        {% if brand_items %}
+        <div>
+          <div class="form-section-title" style="color:var(--brand-dark)">{{ brand }}</div>
+          {% for sz in ['S','M','L'] %}
+            {% set sz_items = brand_items | selectattr('Size','equalto',sz) | list %}
+            {% if sz_items %}
+              <div style="display:flex;gap:.35rem;align-items:flex-start;margin-bottom:.3rem;font-size:.82rem">
+                <span class="size-badge size-{{ sz.lower() }}" style="flex-shrink:0;margin-top:.1rem">{{ sz }}</span>
+                <span>{{ sz_items | map(attribute='Name/Description') | map('replace', brand + ' ', '') | join(', ') }}</span>
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% if sheets_error %}
+  <div class="alert alert-error">{{ sheets_error }}</div>
+{% endif %}
+
+<!-- ── Add Equipment panel (collapsed by default) ── -->
+<div id="add-equipment-panel" class="add-equipment-panel hidden">
+  <h3>Add New Equipment</h3>
+  <form method="POST" action="{{ url_for('add_equipment') }}">
+    <div class="form-grid" style="margin-bottom:.9rem">
+      <div class="form-group">
+        <label class="form-label">Item ID <span class="req">*</span></label>
+        <input class="form-control" type="text" name="item_id" required
+          placeholder="e.g. Dagger - Code M (3)">
+        <div style="font-size:.72rem;color:var(--text-muted);margin-top:.25rem">
+          Use the Combined Label format: Brand - Model (Number)
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Category / Brand</label>
+        <input class="form-control" type="text" name="category"
+          placeholder="e.g. Dagger, Jackson Kayak, Paddle, PFD…"
+          value="{{ category_filter }}"
+          list="category-suggestions">
+        <datalist id="category-suggestions">
+          {% set cats = items | map(attribute='Category') | select | unique | list | sort %}
+          {% for cat in cats %}
+            <option value="{{ cat }}">
+          {% endfor %}
+          <option value="Dagger">
+          <option value="Jackson Kayak">
+          <option value="Pyranha">
+          <option value="Liquid Logic">
+          <option value="Waka">
+          <option value="Spade">
+          <option value="Paddle">
+          <option value="PFD">
+          <option value="Helmet">
+          <option value="Dry Bag">
+        </datalist>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Full Name / Description</label>
+        <input class="form-control" type="text" name="name"
+          placeholder="e.g. Dagger Code M — Medium Volume">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Size</label>
+        <select class="form-control" name="size">
+          <option value="">— N/A —</option>
+          <option value="S">S — under 70 kg / 155 lbs</option>
+          <option value="M">M — 70–90 kg / 155–200 lbs</option>
+          <option value="L">L — 90+ kg / 200+ lbs</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <select class="form-control" name="status">
+          <option value="Available">Available</option>
+          <option value="Maintenance">Maintenance</option>
+        </select>
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label class="form-label">Condition Notes</label>
+        <input class="form-control" type="text" name="condition_notes"
+          placeholder="New, scratches on hull, missing footrest…">
+      </div>
+    </div>
+
+    <!-- Rates row -->
+    <div style="margin-bottom:.75rem">
+      <div class="form-section-title">Rental Rates (USD — leave blank if not applicable)</div>
+      <div class="form-grid-3" style="gap:.75rem">
+        <div class="form-group">
+          <label class="form-label">Hourly ($)</label>
+          <input class="form-control" type="number" name="hourly_rate" min="0" step="0.01" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Half-Day ($)</label>
+          <input class="form-control" type="number" name="half_day_rate" min="0" step="0.01" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Full-Day ($)</label>
+          <input class="form-control" type="number" name="full_day_rate" min="0" step="0.01" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Multi-Day / Day ($)</label>
+          <input class="form-control" type="number" name="multi_day_rate" min="0" step="0.01" placeholder="0.00">
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-group">
+      <button type="submit" class="btn btn-primary">Add to Inventory</button>
+      <button type="button" class="btn btn-ghost" onclick="toggleAddForm()">Cancel</button>
+    </div>
+  </form>
+</div>
+
+<!-- ── Filters ── -->
+<form method="GET" class="filter-bar" style="margin-bottom:1.1rem">
+  <select class="form-control" name="category" style="max-width:220px">
+    <option value="">All categories</option>
+    {% for cat in categories %}
+      <option value="{{ cat }}" {% if category_filter == cat %}selected{% endif %}>{{ cat }}</option>
+    {% endfor %}
+  </select>
+  <select class="form-control" name="status" style="max-width:180px">
+    <option value="">All statuses</option>
+    {% for s in ['Available','Rented','Maintenance'] %}
+      <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn btn-primary">Filter</button>
+  {% if category_filter or status_filter %}
+    <a href="{{ url_for('inventory_view') }}" class="btn btn-ghost">Clear</a>
+  {% endif %}
+</form>
+
+<!-- ── Inventory cards ── -->
+{% if items %}
+  <div class="inventory-grid">
+    {% for item in items %}
+      <div class="inv-card">
+        <div class="inv-card-header">
+          <div>
+            <div class="inv-card-id">{{ item.get('Item ID','') }}</div>
+            <div class="inv-card-name">{{ item.get('Name/Description', item.get('Item ID','')) }}</div>
+            <div class="inv-card-category" style="display:flex;align-items:center;gap:.4rem;margin-top:.15rem">
+              {{ item.get('Category','') }}
+              {% if item.get('Size') %}
+                <span class="size-badge size-{{ item['Size'].lower() }}">{{ item['Size'] }}</span>
+              {% endif %}
+            </div>
+          </div>
+          <span class="badge badge-{{ item.get('Status','available').lower() }}">{{ item.get('Status','Available') }}</span>
+        </div>
+
+        {% if item.get('Condition Notes') %}
+          <div class="inv-card-notes">{{ item.get('Condition Notes') }}</div>
+        {% endif %}
+
+        {% set has_rates = item.get('Hourly Rate') or item.get('Half-Day Rate') or item.get('Full-Day Rate') or item.get('Multi-Day Rate') %}
+        {% if has_rates %}
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.3rem">
+            {% if item.get('Hourly Rate') %}<span class="text-xs text-muted">${{ item['Hourly Rate'] }}/hr</span>{% endif %}
+            {% if item.get('Half-Day Rate') %}<span class="text-xs text-muted">${{ item['Half-Day Rate'] }}/½day</span>{% endif %}
+            {% if item.get('Full-Day Rate') %}<span class="text-xs text-muted">${{ item['Full-Day Rate'] }}/day</span>{% endif %}
+            {% if item.get('Multi-Day Rate') %}<span class="text-xs text-muted">${{ item['Multi-Day Rate'] }}/day+</span>{% endif %}
+          </div>
+        {% endif %}
+
+        <div class="inv-actions">
+          {% if item.get('Status') != 'Maintenance' %}
+            <button class="btn btn-warning btn-sm"
+              onclick="openInvModal('{{ item['Item ID'] | replace("'","\\'") }}','Maintenance','{{ item.get('Condition Notes','') | replace("'","\\'") }}')">
+              Maintenance
+            </button>
+          {% else %}
+            <button class="btn btn-success btn-sm"
+              onclick="openInvModal('{{ item['Item ID'] | replace("'","\\'") }}','Available','{{ item.get('Condition Notes','') | replace("'","\\'") }}')">
+              Set Available
+            </button>
+          {% endif %}
+          <button class="btn btn-ghost btn-sm"
+            onclick="openInvModal('{{ item['Item ID'] | replace("'","\\'") }}','{{ item.get('Status','') | replace("'","\\'") }}','{{ item.get('Condition Notes','') | replace("'","\\'") }}')">
+            Edit Notes
+          </button>
+          <form method="POST" action="{{ url_for('delete_inventory', item_id=item['Item ID']) }}" style="display:inline"
+            onsubmit="return confirm('Remove {{ item['Item ID'] | replace("'","\\'") }} from inventory? This cannot be undone.')">
+            <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+          </form>
+          <button class="btn btn-primary btn-sm" style="margin-left:auto"
+            onclick="toggleAddForm('{{ item.get('Category','') | replace("'","\\'") }}')">+</button>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+{% else %}
+  <div class="card">
+    <div class="empty-state" style="padding:3rem">
+      No inventory items found.
+      {% if not sheets_error %}
+        <br><br>
+        <button class="btn btn-primary" onclick="toggleAddForm()">+ Add Your First Item</button>
+      {% endif %}
+    </div>
+  </div>
+{% endif %}
+
+<!-- ── Status edit modal ── -->
+<div id="inv-overlay" class="modal-overlay hidden" onclick="closeInvModal()"></div>
+<div id="inv-modal" class="modal-box hidden">
+  <h3>Edit Item — <span id="inv-modal-id"></span></h3>
+  <form method="POST" id="inv-modal-action">
+    <input type="hidden" name="item_id" id="inv-form-id">
+    <div class="form-group" style="margin-bottom:1rem">
+      <label class="form-label">Status</label>
+      <select class="form-control" name="status" id="inv-status-select">
+        <option value="Available">Available</option>
+        <option value="Rented">Rented</option>
+        <option value="Maintenance">Maintenance</option>
+      </select>
+    </div>
+    <div class="form-group" style="margin-bottom:1.25rem">
+      <label class="form-label">Condition Notes</label>
+      <textarea class="form-control" name="condition_notes" id="inv-notes-input" rows="3"
+        placeholder="Current condition, damage, missing parts…"></textarea>
+    </div>
+    <div class="btn-group">
+      <button type="submit" class="btn btn-primary"
+        onclick="return confirm('Save changes to this item?')">Save</button>
+      <button type="button" class="btn btn-ghost" onclick="closeInvModal()">Cancel</button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleAddForm(category) {
+  const panel = document.getElementById('add-equipment-panel');
+  const wasHidden = panel.classList.contains('hidden');
+  panel.classList.remove('hidden');
+  if (category) {
+    panel.querySelector('input[name=category]').value = category;
+  }
+  if (wasHidden || category) {
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    panel.querySelector('input[name=item_id]').focus();
+  } else {
+    panel.classList.add('hidden');
+  }
+}
+function toggleSizingGuide() {
+  document.getElementById('sizing-guide').classList.toggle('hidden');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Pucon Kayak Retreat{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">
+    <h1>Today's Overview</h1>
+    <div class="page-subtitle">{{ today.strftime("%A, %B %-d, %Y") }}</div>
+  </div>
+  <div class="btn-group">
+    <a href="{{ url_for('new_reservation') }}" class="btn btn-primary">+ New Booking</a>
+    <button class="btn btn-ghost" onclick="refreshData()">↺ Refresh</button>
+  </div>
+</div>
+
+{% if sheets_error %}
+  <div class="alert alert-error" style="margin-bottom:1.25rem">
+    <strong>Cannot reach Google Sheets:</strong> {{ sheets_error }}
+    <br><span style="font-size:.85rem;margin-top:.25rem;display:block">Check your credentials and Sheet ID in <code>.env</code>, then <a href="/" style="color:inherit;text-decoration:underline">retry</a>.</span>
+  </div>
+{% endif %}
+
+<!-- Stats -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">Available</div>
+    <div class="stat-value green">{{ available_items }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Currently Rented</div>
+    <div class="stat-value teal">{{ rented_items }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Maintenance</div>
+    <div class="stat-value amber">{{ maintenance_items }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Today's Pickups</div>
+    <div class="stat-value teal">{{ today_pickups | length }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Today's Returns</div>
+    <div class="stat-value green">{{ today_returns | length }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Overdue</div>
+    <div class="stat-value red">{{ overdue | length }}</div>
+  </div>
+</div>
+
+<!-- Overdue alert -->
+{% if overdue %}
+  <div class="alert alert-warning" style="margin-bottom:1.25rem">
+    ⚠️ <strong>{{ overdue | length }} overdue return{{ 's' if overdue | length != 1 }}.</strong>
+    Items checked out past their return time.
+  </div>
+{% endif %}
+
+<div class="section-grid">
+  <!-- Today's pickups -->
+  <div class="card">
+    <div class="card-header">
+      <h3>Today's Pickups</h3>
+      <span class="badge badge-upcoming">{{ today_pickups | length }}</span>
+    </div>
+    <div class="card-body">
+      {% if today_pickups %}
+        <div class="today-list">
+          {% for r in today_pickups %}
+            <div class="today-item">
+              <div>
+                <div class="today-name">
+                  <a href="{{ url_for('reservation_detail', res_id=r['Reservation ID']) }}">{{ r['Customer Name'] }}</a>
+                </div>
+                <div class="today-meta">{{ r.get('Item IDs', '—') }} · {{ r.get('Rental Type', '') }}</div>
+              </div>
+              <div style="text-align:right">
+                <div class="today-time">{{ r.get('Start Date & Time', '') | fmt_datetime }}</div>
+                <a href="{{ url_for('reservation_detail', res_id=r['Reservation ID']) }}" class="btn btn-primary btn-sm" style="margin-top:.35rem">Check Out</a>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">No pickups scheduled today.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Today's returns -->
+  <div class="card">
+    <div class="card-header">
+      <h3>Expected Returns</h3>
+      <span class="badge badge-checked-out">{{ today_returns | length }}</span>
+    </div>
+    <div class="card-body">
+      {% if today_returns %}
+        <div class="today-list">
+          {% for r in today_returns %}
+            <div class="today-item">
+              <div>
+                <div class="today-name">
+                  <a href="{{ url_for('reservation_detail', res_id=r['Reservation ID']) }}">{{ r['Customer Name'] }}</a>
+                </div>
+                <div class="today-meta">{{ r.get('Item IDs', '—') }}</div>
+              </div>
+              <div style="text-align:right">
+                <div class="today-time">{{ r.get('End Date & Time', '') | fmt_datetime }}</div>
+                <a href="{{ url_for('reservation_detail', res_id=r['Reservation ID']) }}" class="btn btn-success btn-sm" style="margin-top:.35rem">Return</a>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">No returns expected today.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Overdue -->
+  {% if overdue %}
+  <div class="card" style="grid-column: 1 / -1">
+    <div class="card-header">
+      <h3 style="color:var(--red-600)">⚠️ Overdue Returns</h3>
+      <span class="badge badge-canceled">{{ overdue | length }}</span>
+    </div>
+    <div class="card-body">
+      <div class="today-list">
+        {% for r in overdue %}
+          <div class="today-item overdue">
+            <div>
+              <div class="today-name">
+                <a href="{{ url_for('reservation_detail', res_id=r['Reservation ID']) }}">{{ r['Customer Name'] }}</a>
+              </div>
+              <div class="today-meta">{{ r.get('Item IDs', '—') }} · Was due {{ r.get('End Date & Time','') | fmt_datetime }}</div>
+            </div>
+            <a href="{{ url_for('reservation_detail', res_id=r['Reservation ID']) }}" class="btn btn-danger btn-sm">Process Return</a>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function refreshData() {
+  fetch('/api/refresh', { method: 'POST' })
+    .then(() => window.location.reload());
+}
+</script>
+{% endblock %}

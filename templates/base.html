@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Pucon Kayak Retreat{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=Open+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+<nav class="navbar">
+  <a href="{{ url_for('dashboard') }}" class="nav-brand">
+    <img
+      class="nav-logo-img"
+      src="{{ url_for('static', filename='img/pkr-logo.jpg') }}"
+      alt="Pucon Kayak Retreat"
+      onerror="this.src='https://puconkayakretreat.com/wp-content/uploads/2019/06/JohnnieKayak-Logo-PKRAMA-FA-webheader.jpg'"
+    >
+    <span class="nav-brand-text" style="display:none">
+      Pucon Kayak Retreat
+      <span class="nav-brand-sub">Staff Portal</span>
+    </span>
+  </a>
+  <div class="nav-links">
+    <a href="{{ url_for('dashboard') }}"
+       class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}">Dashboard</a>
+    <a href="{{ url_for('reservations') }}"
+       class="nav-link {% if request.endpoint in ('reservations','reservation_detail','new_reservation') %}active{% endif %}">Reservations</a>
+    <a href="{{ url_for('inventory_view') }}"
+       class="nav-link {% if request.endpoint == 'inventory_view' %}active{% endif %}">Inventory</a>
+    <a href="{{ url_for('calendar') }}"
+       class="nav-link {% if request.endpoint == 'calendar' %}active{% endif %}">Calendar</a>
+    <a href="{{ url_for('settings_view') }}"
+       class="nav-link {% if request.endpoint == 'settings_view' %}active{% endif %}">Settings</a>
+    <a href="{{ url_for('new_reservation') }}" class="btn btn-primary nav-cta">+ New Booking</a>
+    <a href="{{ url_for('logout') }}" class="nav-link nav-logout">Sign Out</a>
+  </div>
+</nav>
+
+<main class="main-content">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-messages">
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">
+            {{ message }}
+            <button onclick="this.parentElement.remove()" class="flash-close">×</button>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+</main>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

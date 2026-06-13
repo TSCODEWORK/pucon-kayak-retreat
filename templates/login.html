@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In — Pucon Kayak Retreat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=Open+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="login-wrapper">
+  <div class="login-card">
+    <img
+      class="login-logo-img"
+      src="{{ url_for('static', filename='img/pkr-logo.jpg') }}"
+      alt="Pucon Kayak Retreat"
+      onerror="this.src='https://puconkayakretreat.com/wp-content/uploads/2019/06/JohnnieKayak-Logo-PKRAMA-FA-webheader.jpg'"
+    >
+    <div class="login-title">Staff Portal</div>
+    <div class="login-subtitle">"Anyone can travel. Not everyone experiences it riverside."</div>
+
+    {% if error %}
+      <div class="login-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST">
+      <input
+        class="pin-input"
+        type="password"
+        name="pin"
+        placeholder="••••"
+        inputmode="numeric"
+        autocomplete="current-password"
+        autofocus
+        required
+      >
+      <button type="submit" class="btn btn-primary btn-lg" style="width:100%">Sign In</button>
+    </form>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block title %}Settings — Pucon Kayak Retreat{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">
+    <h1>Settings</h1>
+    <div class="page-subtitle">Rental rates, access, and app configuration</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;align-items:start">
+
+  <!-- ── Default rental rates ── -->
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h3>Default Rental Rates</h3>
+        <div class="text-sm text-muted">Pre-filled when adding new equipment</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <form method="POST">
+        <input type="hidden" name="action" value="update_rates">
+        <div class="form-grid-3" style="gap:.85rem;margin-bottom:1rem">
+          <div class="form-group">
+            <label class="form-label">Hourly ($)</label>
+            <input class="form-control" type="number" name="default_hourly_rate"
+              min="0" step="0.01" placeholder="0.00"
+              value="{{ settings.get('default_hourly_rate','') }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Half-Day ($)</label>
+            <input class="form-control" type="number" name="default_half_day_rate"
+              min="0" step="0.01" placeholder="0.00"
+              value="{{ settings.get('default_half_day_rate','') }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Full-Day ($)</label>
+            <input class="form-control" type="number" name="default_full_day_rate"
+              min="0" step="0.01" placeholder="0.00"
+              value="{{ settings.get('default_full_day_rate','') }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Multi-Day / Day ($)</label>
+            <input class="form-control" type="number" name="default_multi_day_rate"
+              min="0" step="0.01" placeholder="0.00"
+              value="{{ settings.get('default_multi_day_rate','') }}">
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Save Defaults</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Bulk rate update ── -->
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h3>Bulk Rate Update</h3>
+        <div class="text-sm text-muted">Apply rates to all items in a category at once</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <form method="POST"
+        onsubmit="
+          const cat = this.bulk_category.value || 'all items';
+          return confirm('Apply these rates to ' + cat + '? This will overwrite existing rates for those items.');
+        ">
+        <input type="hidden" name="action" value="bulk_rates">
+        <div class="form-group" style="margin-bottom:1rem">
+          <label class="form-label">Category</label>
+          <select class="form-control" name="bulk_category">
+            <option value="">All categories</option>
+            {% for cat in categories %}
+              <option value="{{ cat }}">{{ cat }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-grid-3" style="gap:.85rem;margin-bottom:1rem">
+          <div class="form-group">
+            <label class="form-label">Hourly ($)</label>
+            <input class="form-control" type="number" name="bulk_hourly"
+              min="0" step="0.01" placeholder="leave blank to skip">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Half-Day ($)</label>
+            <input class="form-control" type="number" name="bulk_half_day"
+              min="0" step="0.01" placeholder="leave blank to skip">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Full-Day ($)</label>
+            <input class="form-control" type="number" name="bulk_full_day"
+              min="0" step="0.01" placeholder="leave blank to skip">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Multi-Day / Day ($)</label>
+            <input class="form-control" type="number" name="bulk_multi_day"
+              min="0" step="0.01" placeholder="leave blank to skip">
+          </div>
+        </div>
+        <button type="submit" class="btn btn-warning">Apply to Inventory</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Change PIN ── -->
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h3>Access PIN</h3>
+        <div class="text-sm text-muted">Required to sign in to the app</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <form method="POST"
+        onsubmit="return confirm('Change the app PIN? Make sure you remember the new one.')">
+        <input type="hidden" name="action" value="change_pin">
+        <div class="form-grid" style="gap:.85rem;margin-bottom:1rem">
+          <div class="form-group">
+            <label class="form-label">New PIN</label>
+            <input class="form-control" type="password" name="new_pin"
+              autocomplete="new-password" placeholder="Min. 4 characters" minlength="4">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Confirm PIN</label>
+            <input class="form-control" type="password" name="confirm_pin"
+              autocomplete="new-password" placeholder="Repeat PIN">
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Update PIN</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── General ── -->
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h3>General</h3>
+        <div class="text-sm text-muted">Business info and preferences</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <form method="POST">
+        <input type="hidden" name="action" value="update_general">
+        <div class="form-group" style="margin-bottom:.85rem">
+          <label class="form-label">Business Name</label>
+          <input class="form-control" type="text" name="business_name"
+            value="{{ settings.get('business_name','Pucon Kayak Retreat') }}">
+        </div>
+        <div class="form-group" style="margin-bottom:1rem">
+          <label class="form-label">Currency</label>
+          <select class="form-control" name="currency" style="max-width:160px">
+            {% for c in ['USD','CLP','EUR','GBP'] %}
+              <option value="{{ c }}" {% if settings.get('currency','USD') == c %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Google Sheets Backup ── -->
+  <div class="card" style="grid-column:1/-1">
+    <div class="card-header">
+      <div>
+        <h3>Google Sheets Backup</h3>
+        <div class="text-sm text-muted">Link a Google Sheet to back up all your data — inventory and reservations — with one click</div>
+      </div>
+    </div>
+    <div class="card-body">
+      {% set sheet_id = settings.get('sheet_id','') or '' %}
+
+      <form method="POST" style="margin-bottom:1.25rem">
+        <input type="hidden" name="action" value="update_sheet_url">
+        <div class="form-group" style="margin-bottom:.75rem">
+          <label class="form-label">Google Sheet editor link</label>
+          <div class="text-sm text-muted" style="margin-bottom:.5rem">
+            Open your Google Sheet, copy the URL from the address bar, and paste it here. The link looks like:<br>
+            <span style="font-family:monospace;font-size:.8rem;color:var(--text-muted)">https://docs.google.com/spreadsheets/d/<strong>your-sheet-id</strong>/edit</span>
+          </div>
+          <input class="form-control" type="url" name="sheet_url"
+            placeholder="https://docs.google.com/spreadsheets/d/…/edit"
+            value="{{ ('https://docs.google.com/spreadsheets/d/' + sheet_id + '/edit') if sheet_id else '' }}">
+        </div>
+        <button type="submit" class="btn btn-primary">Save Sheet Link</button>
+        {% if sheet_id %}
+          <a href="https://docs.google.com/spreadsheets/d/{{ sheet_id }}/edit" target="_blank"
+             class="btn btn-ghost" style="margin-left:.5rem">↗ Open Sheet</a>
+        {% endif %}
+      </form>
+
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center;border-top:1px solid var(--border);padding-top:1rem">
+        <div class="text-sm text-muted">
+          {% if sheet_id %}
+            Sheet linked: <span style="font-family:monospace">{{ sheet_id[:20] }}…</span>
+          {% else %}
+            No sheet linked yet — paste your editor URL above.
+          {% endif %}
+        </div>
+        <div style="margin-left:auto;display:flex;gap:.75rem">
+          <form method="POST" action="{{ url_for('api_sync') }}"
+            onsubmit="{% if not sheet_id %}alert('Link a Google Sheet first.'); return false;{% endif %}">
+            <button type="submit" class="btn btn-ghost" {% if not sheet_id %}title="Link a sheet first"{% endif %}>
+              ↑ Push to Google Sheets
+            </button>
+          </form>
+          <form method="POST" action="{{ url_for('api_refresh') }}">
+            <button type="submit" class="btn btn-ghost">↺ Clear Cache</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

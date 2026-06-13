@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Reservations — Pucon Kayak Retreat{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">
+    <h1>Reservations</h1>
+    <div class="page-subtitle">{{ reservations | length }} result{{ 's' if reservations | length != 1 }}</div>
+  </div>
+  <a href="{{ url_for('new_reservation') }}" class="btn btn-primary">+ New Booking</a>
+</div>
+
+{% if sheets_error %}
+  <div class="alert alert-error">{{ sheets_error }}</div>
+{% endif %}
+
+<!-- Quick-filter chips -->
+<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem">
+  <a href="{{ url_for('reservations') }}"
+    class="btn btn-sm {% if not status_filter and not q and not date_filter %}btn-primary{% else %}btn-ghost{% endif %}">
+    All
+  </a>
+  <a href="{{ url_for('reservations', status='Upcoming') }}"
+    class="btn btn-sm {% if status_filter == 'Upcoming' %}btn-primary{% else %}btn-ghost{% endif %}">
+    Upcoming
+  </a>
+  <a href="{{ url_for('reservations', status='Checked Out') }}"
+    class="btn btn-sm {% if status_filter == 'Checked Out' %}btn-primary{% else %}btn-ghost{% endif %}">
+    Checked Out
+  </a>
+  <a href="{{ url_for('reservations', status='Returned') }}"
+    class="btn btn-sm {% if status_filter == 'Returned' %}btn-primary{% else %}btn-ghost{% endif %}">
+    Past Rentals
+  </a>
+  <a href="{{ url_for('reservations', status='Canceled') }}"
+    class="btn btn-sm {% if status_filter == 'Canceled' %}btn-primary{% else %}btn-ghost{% endif %}">
+    Canceled
+  </a>
+</div>
+
+<!-- Filters -->
+<form method="GET" class="filter-bar" style="margin-bottom:1.25rem">
+  <input class="form-control search-input" type="search" name="q"
+    placeholder="Search by name, email, phone, ID, kayak…" value="{{ q }}">
+  <select class="form-control" name="status" style="max-width:180px">
+    <option value="">All statuses</option>
+    {% for s in ['Upcoming','Checked Out','Returned','Canceled'] %}
+      <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s }}</option>
+    {% endfor %}
+  </select>
+  <input class="form-control" type="date" name="date" value="{{ date_filter }}" style="max-width:175px">
+  <button type="submit" class="btn btn-primary">Filter</button>
+  {% if q or status_filter or date_filter %}
+    <a href="{{ url_for('reservations') }}" class="btn btn-ghost">Clear</a>
+  {% endif %}
+</form>
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Customer</th>
+          <th>Items</th>
+          <th>Start</th>
+          <th>End</th>
+          <th>Type</th>
+          <th>Payment</th>
+          <th>Waiver</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if reservations %}
+          {% for r in reservations %}
+          <tr>
+            <td><code style="font-size:.75rem">{{ r.get('Reservation ID','') }}</code></td>
+            <td>
+              <div style="font-weight:600">{{ r.get('Customer Name','—') }}</div>
+              <div style="font-size:.75rem;color:var(--text-muted)">{{ r.get('Customer Phone','') }}</div>
+            </td>
+            <td style="font-size:.8rem;max-width:180px">{{ r.get('Item IDs','—') }}</td>
+            <td style="white-space:nowrap;font-size:.85rem">{{ r.get('Start Date & Time','') | fmt_datetime }}</td>
+            <td style="white-space:nowrap;font-size:.85rem">{{ r.get('End Date & Time','') | fmt_datetime }}</td>
+            <td style="font-size:.8rem">{{ r.get('Rental Type','') }}</td>
+            <td>
+              {% set ps = r.get('Payment Status','') %}
+              {% if ps == 'Paid in Full' %}
+                <span class="badge badge-paid">Paid</span>
+              {% elif ps == 'Deposit Paid' %}
+                <span class="badge badge-deposit">Deposit</span>
+              {% else %}
+                <span class="badge badge-unpaid">Unpaid</span>
+              {% endif %}
+              {% if r.get('Payment Amount') %}
+                <div style="font-size:.75rem;color:var(--text-muted);margin-top:.15rem">${{ r.get('Payment Amount') }}</div>
+              {% endif %}
+            </td>
+            <td style="text-align:center">
+              {% if r.get('Waiver Signed') == 'Yes' %}
+                <span style="color:var(--green-600);font-size:1.1rem">✓</span>
+              {% else %}
+                <span style="color:var(--red-600);font-size:1.1rem">✗</span>
+              {% endif %}
+            </td>
+            <td>
+              {% set st = r.get('Reservation Status','') %}
+              <span class="badge badge-{{ st.lower().replace(' ','-') }}">{{ st }}</span>
+            </td>
+            <td>
+              <a href="{{ url_for('reservation_detail', res_id=r['Reservation ID']) }}" class="btn btn-ghost btn-sm">View →</a>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="10" class="empty-state" style="padding:2.5rem">No reservations found.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

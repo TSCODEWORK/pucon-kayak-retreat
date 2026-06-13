@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+{% block title %}{{ reservation['Reservation ID'] }} — Pucon Kayak Retreat{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">
+    <h1>{{ reservation.get('Customer Name', '—') }}</h1>
+    <div class="page-subtitle">
+      <code>{{ reservation.get('Reservation ID') }}</code> ·
+      {% set st = reservation.get('Reservation Status','') %}
+      <span class="badge badge-{{ st.lower().replace(' ','-') }}">{{ st }}</span>
+    </div>
+  </div>
+  <div class="btn-group">
+    <a href="{{ url_for('reservations') }}" class="btn btn-ghost">← All Reservations</a>
+  </div>
+</div>
+
+<!-- Quick status actions -->
+{% set st = reservation.get('Reservation Status','') %}
+<div class="card" style="margin-bottom:1.25rem">
+  <div class="card-body" style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+    <span style="font-weight:600;font-size:.9rem;color:var(--text-muted)">Quick actions:</span>
+
+    {% if st == 'Upcoming' %}
+      <form method="POST" style="display:inline"
+        onsubmit="return confirm('Check out {{ reservation.get(\'Customer Name\',\'this customer\') | replace(\"'\", \"\\\\'\") }}? This will mark all reserved items as Rented.')">
+        <input type="hidden" name="action" value="update_status">
+        <input type="hidden" name="status" value="Checked Out">
+        <button type="submit" class="btn btn-warning">✓ Check Out</button>
+      </form>
+      <form method="POST" style="display:inline"
+        onsubmit="return confirm('Cancel this reservation? This cannot be undone.')">
+        <input type="hidden" name="action" value="update_status">
+        <input type="hidden" name="status" value="Canceled">
+        <button type="submit" class="btn btn-danger btn-sm">Cancel Reservation</button>
+      </form>
+    {% elif st == 'Checked Out' %}
+      <button class="btn btn-success" onclick="openReturnModal()">✓ Mark Returned</button>
+      <form method="POST" style="display:inline"
+        onsubmit="return confirm('Cancel this reservation? Items will be set back to Available.')">
+        <input type="hidden" name="action" value="update_status">
+        <input type="hidden" name="status" value="Canceled">
+        <button type="submit" class="btn btn-danger btn-sm">Cancel Reservation</button>
+      </form>
+    {% elif st == 'Returned' %}
+      <span class="text-muted text-sm">Reservation complete.</span>
+    {% elif st == 'Canceled' %}
+      <span class="text-muted text-sm">This reservation was canceled.</span>
+    {% endif %}
+  </div>
+</div>
+
+<div class="detail-grid">
+
+  <!-- Left: details + edit form -->
+  <div style="display:flex;flex-direction:column;gap:1.25rem">
+
+    <!-- Info -->
+    <div class="card">
+      <div class="card-header"><h3>Reservation Details</h3></div>
+      <div class="card-body">
+        <div class="info-list">
+          <div class="info-row">
+            <span class="info-label">Customer</span>
+            <span class="info-value" style="font-weight:600">{{ reservation.get('Customer Name','—') }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Phone</span>
+            <span class="info-value">{{ reservation.get('Customer Phone','—') }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Email</span>
+            <span class="info-value">{{ reservation.get('Customer Email','—') }}</span>
+          </div>
+          <div class="divider"></div>
+          <div class="info-row">
+            <span class="info-label">Start</span>
+            <span class="info-value">{{ reservation.get('Start Date & Time','') | fmt_datetime }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">End</span>
+            <span class="info-value">{{ reservation.get('End Date & Time','') | fmt_datetime }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Rental Type</span>
+            <span class="info-value">{{ reservation.get('Rental Type','—') }}</span>
+          </div>
+          <div class="divider"></div>
+          <div class="info-row">
+            <span class="info-label">Items</span>
+            <span class="info-value">
+              {% for item in reserved_items %}
+                <div>{{ item.get('Name/Description', item.get('Item ID')) }}
+                  <span class="text-muted text-xs">({{ item.get('Item ID') }})</span></div>
+              {% else %}
+                {{ reservation.get('Item IDs','—') }}
+              {% endfor %}
+            </span>
+          </div>
+          <div class="divider"></div>
+          <div class="info-row">
+            <span class="info-label">Payment</span>
+            <span class="info-value">
+              {% set ps = reservation.get('Payment Status','') %}
+              <span class="badge badge-{{ 'paid' if ps == 'Paid in Full' else 'deposit' if ps == 'Deposit Paid' else 'unpaid' }}">{{ ps }}</span>
+              {% if reservation.get('Payment Amount') %}
+                · ${{ reservation.get('Payment Amount') }}
+              {% endif %}
+            </span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Waiver</span>
+            <span class="info-value">
+              {% if reservation.get('Waiver Signed') == 'Yes' %}
+                <span style="color:var(--green-600)">✓ Signed</span>
+              {% else %}
+                <span style="color:var(--red-600)">✗ Not signed</span>
+              {% endif %}
+            </span>
+          </div>
+          {% if reservation.get('Notes') %}
+          <div class="divider"></div>
+          <div class="info-row">
+            <span class="info-label">Notes</span>
+            <span class="info-value" style="white-space:pre-wrap;font-size:.875rem">{{ reservation.get('Notes') }}</span>
+          </div>
+          {% endif %}
+          <div class="divider"></div>
+          <div class="info-row">
+            <span class="info-label">Created</span>
+            <span class="info-value text-muted text-sm">{{ reservation.get('Created At','—') }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit form -->
+    {% if st not in ('Returned','Canceled') %}
+    <div class="card">
+      <div class="card-header">
+        <h3>Edit Details</h3>
+      </div>
+      <div class="card-body">
+        <form method="POST" id="reservation-form" data-exclude-id="{{ reservation.get('Reservation ID') }}">
+          <input type="hidden" name="action" value="update_details">
+
+          <div class="form-section">
+            <div class="form-section-title">Customer</div>
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">Name</label>
+                <input class="form-control" type="text" name="customer_name" value="{{ reservation.get('Customer Name','') }}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Phone</label>
+                <input class="form-control" type="tel" name="customer_phone" value="{{ reservation.get('Customer Phone','') }}">
+              </div>
+              <div class="form-group" style="grid-column:1/-1">
+                <label class="form-label">Email</label>
+                <input class="form-control" type="email" name="customer_email" value="{{ reservation.get('Customer Email','') }}">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section-title">Booking Window</div>
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">Start</label>
+                <input class="form-control" type="datetime-local" name="start_datetime"
+                  value="{{ reservation.get('Start Date & Time','') | replace(' ','T') }}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">End</label>
+                <input class="form-control" type="datetime-local" name="end_datetime"
+                  value="{{ reservation.get('End Date & Time','') | replace(' ','T') }}">
+              </div>
+            </div>
+            <div class="form-group" style="margin-top:.75rem">
+              <label class="form-label">Rental Type</label>
+              <select class="form-control" name="rental_type" style="max-width:200px">
+                {% for t in ['Hourly','Half-Day','Full-Day','Multi-Day'] %}
+                  <option value="{{ t }}" {% if reservation.get('Rental Type') == t %}selected{% endif %}>{{ t }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div id="conflict-warning" style="margin-top:.75rem">
+              ⚠️ <span id="conflict-text"></span>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section-title">Equipment</div>
+            <div class="item-select-grid">
+              {% for item in inventory %}
+                {% set is_checked = item['Item ID']|string in item_ids %}
+                {% set unavailable = item.Status == 'Maintenance' and not is_checked %}
+                <label class="item-select-card {% if unavailable %}unavailable{% endif %}">
+                  <input type="checkbox" name="item_ids" value="{{ item['Item ID'] }}"
+                    {% if is_checked %}checked{% endif %}
+                    {% if unavailable %}disabled{% endif %}>
+                  <div>
+                    <div class="item-name">{{ item.get('Name/Description', item['Item ID']) }}</div>
+                    <div class="item-meta">{{ item['Item ID'] }} · {{ item.get('Category','') }}</div>
+                    <div class="item-meta" style="margin-top:.1rem">
+                      <span class="badge badge-{{ item.Status.lower() }}" style="font-size:.65rem">{{ item.Status }}</span>
+                    </div>
+                  </div>
+                </label>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section-title">Payment</div>
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">Status</label>
+                <select class="form-control" name="payment_status">
+                  {% for s in ['Unpaid','Deposit Paid','Paid in Full'] %}
+                    <option value="{{ s }}" {% if reservation.get('Payment Status') == s %}selected{% endif %}>{{ s }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Amount ($)</label>
+                <input class="form-control" type="number" name="payment_amount" min="0" step="0.01"
+                  value="{{ reservation.get('Payment Amount','') }}">
+              </div>
+            </div>
+            <div id="pricing-breakdown" style="margin-top:.75rem"></div>
+          </div>
+
+          <div class="form-section">
+            <div class="form-section-title">Other</div>
+            <label class="checkbox-label" style="margin-bottom:.85rem">
+              <input type="checkbox" name="waiver_signed"
+                {% if reservation.get('Waiver Signed') == 'Yes' %}checked{% endif %}>
+              Waiver signed
+            </label>
+            <div class="form-group">
+              <label class="form-label">Notes</label>
+              <textarea class="form-control" name="notes" rows="3">{{ reservation.get('Notes','') }}</textarea>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary"
+            onclick="return confirm('Save changes to this reservation?')">Save Changes</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Right: items condition -->
+  <div style="display:flex;flex-direction:column;gap:1.25rem;position:sticky;top:80px;align-self:start">
+    <div class="card">
+      <div class="card-header"><h3>Equipment</h3></div>
+      <div class="card-body" style="display:flex;flex-direction:column;gap:.75rem">
+        {% for item in reserved_items %}
+          <div style="padding:.75rem;border:1px solid var(--border);border-radius:var(--radius-sm)">
+            <div style="font-weight:600;font-size:.875rem">{{ item.get('Name/Description', item.get('Item ID')) }}</div>
+            <div style="font-size:.75rem;color:var(--text-muted)">{{ item.get('Item ID') }} · {{ item.get('Category','') }}</div>
+            <div style="margin-top:.35rem">
+              <span class="badge badge-{{ item.get('Status','').lower() }}">{{ item.get('Status','') }}</span>
+            </div>
+            {% if item.get('Condition Notes') %}
+              <div style="font-size:.8rem;color:var(--slate-600);margin-top:.35rem;font-style:italic">{{ item.get('Condition Notes') }}</div>
+            {% endif %}
+          </div>
+        {% else %}
+          <div class="empty-state">No items linked.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+</div><!-- /detail-grid -->
+
+<!-- Return modal -->
+{% if st == 'Checked Out' %}
+<div id="return-overlay" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200"></div>
+<div id="return-modal" class="hidden" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+     background:#fff;border-radius:var(--radius);box-shadow:var(--shadow-md);padding:2rem;
+     width:90%;max-width:420px;z-index:201">
+  <h3 style="margin-bottom:.5rem">Mark as Returned</h3>
+  <p class="text-sm text-muted" style="margin-bottom:1rem">Optionally record condition of returned gear.</p>
+  <form method="POST">
+    <input type="hidden" name="action" value="update_status">
+    <input type="hidden" name="status" value="Returned">
+    <div class="form-group" style="margin-bottom:1rem">
+      <label class="form-label">Condition Notes</label>
+      <textarea class="form-control" name="condition_notes" rows="3"
+        placeholder="Any damage, missing parts, general condition…"></textarea>
+    </div>
+    <div class="btn-group">
+      <button type="submit" class="btn btn-success">Confirm Return</button>
+      <button type="button" class="btn btn-ghost" onclick="closeReturnModal()">Cancel</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+{% endblock %}

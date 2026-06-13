@@ -1,0 +1,30 @@
+# Credentials & secrets
+credentials.json
+.env
+*.env.*
+service_account*.json
+
+# Database (local data — not source code)
+rental.db
+rental.db-shm
+rental.db-wal
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+*.egg-info/
+
+# Build artifacts
+build/
+dist/
+*.spec
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
