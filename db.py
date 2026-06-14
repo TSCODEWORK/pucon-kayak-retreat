@@ -129,6 +129,7 @@ class DatabaseClient:
         "app_pin":               "1234",
         "business_name":         "Pucon Kayak Retreat",
         "currency":              "USD",
+        "rate_currency":         "CLP",   # currency in which item rates are stored
         "default_hourly_rate":   "",
         "default_half_day_rate": "",
         "default_full_day_rate": "",

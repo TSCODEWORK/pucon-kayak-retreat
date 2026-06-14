@@ -612,15 +612,17 @@ async function updatePricing() {
   try {
     const data = await fetch(`/api/pricing?items=${encodeURIComponent(ids)}&type=${type}&start=${start}&end=${end}`).then(r=>r.json());
     if (data.error) return;
+    const isCLP = data.currency === 'CLP';
+    const fmtAmt = (n) => isCLP ? `CLP $${Math.round(n).toLocaleString()}` : `$${n.toFixed(2)}`;
     let html = '<div style="border-top:1px solid var(--border);padding-top:.75rem;margin-top:.5rem">';
     for (const b of data.breakdown)
-      html += `<div class="info-row" style="font-size:.8rem"><span class="info-label">${b.name||b.item_id}</span><span class="info-value">$${b.subtotal.toFixed(2)}</span></div>`;
+      html += `<div class="info-row" style="font-size:.8rem"><span class="info-label">${b.name||b.item_id}</span><span class="info-value">${fmtAmt(b.subtotal)}</span></div>`;
     html += `<div class="info-row" style="font-weight:700;margin-top:.25rem;font-size:.95rem">
       <span class="info-label">Estimated Total</span>
-      <span class="info-value" style="color:var(--brand-dark)">$${data.total.toFixed(2)}</span></div></div>`;
+      <span class="info-value" style="color:var(--brand-dark)">${fmtAmt(data.total)}</span></div></div>`;
     document.getElementById('pricing-breakdown').innerHTML = html;
     const amt = document.getElementById('payment-amount');
-    if (amt && (!amt.value||parseFloat(amt.value)===0)) amt.value = data.total.toFixed(2);
+    if (amt && (!amt.value||parseFloat(amt.value)===0)) amt.value = isCLP ? Math.round(data.total_raw) : data.total.toFixed(2);
   } catch(e) {}
 }
 

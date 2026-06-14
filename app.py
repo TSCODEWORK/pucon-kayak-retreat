@@ -85,6 +85,10 @@ def get_display_currency():
     """Returns 'USD' or 'CLP' based on session preference."""
     return session.get("display_currency", db.get_settings().get("default_currency", "USD"))
 
+def get_rate_currency():
+    """Returns the currency in which item rates are stored in the DB (default 'CLP')."""
+    return db.get_settings().get("rate_currency", "CLP")
+
 # Load PIN from DB (falls back to env var, then "1234")
 _startup_settings = db.get_settings()
 _saved_pin = _startup_settings.get("app_pin", "")
@@ -928,8 +932,19 @@ def api_pricing():
                 "subtotal": round(subtotal, 2),
             })
 
+        # Convert total from stored currency to display currency
+        stored = get_rate_currency()
+        display = get_display_currency()
+        display_total = total
+        if stored == "CLP" and display == "USD":
+            display_total = total / _get_clp_rate()
+        elif stored == "USD" and display == "CLP":
+            display_total = total * _get_clp_rate()
+
         return jsonify({
-            "total": round(total, 2),
+            "total": round(display_total, 2),
+            "total_raw": round(total, 2),          # in stored currency (CLP)
+            "currency": display,
             "breakdown": breakdown,
             "duration_hours": round(duration_hours, 1),
             "duration_days": duration_days,
@@ -1132,18 +1147,30 @@ def fmt_currency(v):
         return f"${v}" if v else "—"
 
 def fmt_price(v, currency=None):
-    """Format a price in the current display currency (USD or CLP)."""
+    """Format a stored rate in the requested display currency.
+
+    Rates are stored in get_rate_currency() (default CLP).
+    Conversion direction depends on stored vs. display currency:
+      stored CLP → display USD : divide by exchange rate
+      stored CLP → display CLP : show as-is
+      stored USD → display CLP : multiply by exchange rate  (legacy fallback)
+      stored USD → display USD : show as-is
+    """
     try:
         amount = float(v)
     except (TypeError, ValueError):
         return "—"
     if currency is None:
-        currency = "USD"  # default fallback
-    if currency == "CLP":
-        clp = amount * _get_clp_rate()
-        return f"CLP ${clp:,.0f}"
-    else:
+        currency = "USD"
+    stored = get_rate_currency()
+    if stored == currency:
+        if currency == "CLP":
+            return f"CLP ${amount:,.0f}"
         return f"${amount:.2f}"
+    if stored == "CLP" and currency == "USD":
+        return f"${amount / _get_clp_rate():.2f}"
+    # stored == "USD" and currency == "CLP"
+    return f"CLP ${amount * _get_clp_rate():,.0f}"
 
 app.jinja_env.filters["fmt_datetime"] = fmt_datetime
 app.jinja_env.filters["fmt_date"] = fmt_date
@@ -1151,6 +1178,7 @@ app.jinja_env.filters["fmt_currency"] = fmt_currency
 app.jinja_env.filters["fmt_price"] = fmt_price
 app.jinja_env.globals["now"] = datetime.now
 app.jinja_env.globals["get_display_currency"] = get_display_currency
+app.jinja_env.globals["get_rate_currency"] = get_rate_currency
 app.jinja_env.globals["get_clp_rate"] = _get_clp_rate
 
 
