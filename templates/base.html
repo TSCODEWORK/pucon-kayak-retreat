@@ -66,8 +66,42 @@
 </main>
 
 <footer style="text-align:center;padding:.85rem 1rem;font-size:.75rem;color:var(--slate-400);border-top:1px solid var(--border);margin-top:2rem">
-  Pucon Kayak Retreat &mdash; Staff Portal
+  Pucon Kayak Retreat &mdash; Staff Portal &mdash; v{{ app_version }}
 </footer>
+
+<!-- Update banner — shown by JS if a newer version is available -->
+<div id="update-banner" style="display:none;position:fixed;bottom:1rem;right:1rem;z-index:9999;
+  background:#0f3d4a;color:#fff;padding:.75rem 1.1rem;border-radius:8px;
+  box-shadow:0 4px 16px rgba(0,0,0,.25);display:none;align-items:center;gap:.85rem;font-size:.875rem">
+  <span>🎉 A new version is available</span>
+  <a id="update-link" href="#" target="_blank"
+    style="background:#fff;color:#0f3d4a;font-weight:700;padding:.3rem .75rem;border-radius:5px;text-decoration:none;white-space:nowrap">
+    Download Update
+  </a>
+  <button onclick="document.getElementById('update-banner').style.display='none'"
+    style="background:none;border:none;color:rgba(255,255,255,.6);cursor:pointer;font-size:1.1rem;line-height:1;padding:0">×</button>
+</div>
+<script>
+(function(){
+  // Check for updates once per session — polls a tiny JSON file you host anywhere
+  const VERSION_URL = 'https://puconkayakretreat.com/app/version.json';
+  const CURRENT     = '{{ app_version }}';
+  const DISMISSED   = 'pkr_update_dismissed_' + CURRENT;
+  if (sessionStorage.getItem(DISMISSED)) return;
+  fetch(VERSION_URL, { cache: 'no-store' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.version && data.version !== CURRENT) {
+        const banner = document.getElementById('update-banner');
+        document.getElementById('update-link').href = data.download_url || VERSION_URL;
+        banner.style.display = 'flex';
+      }
+    })
+    .catch(() => {}); // silently ignore — no internet, wrong URL, etc.
+  document.getElementById('update-banner')?.querySelector('button')
+    ?.addEventListener('click', () => sessionStorage.setItem(DISMISSED, '1'));
+})();
+</script>
 
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 {% block scripts %}{% endblock %}

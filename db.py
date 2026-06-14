@@ -49,8 +49,21 @@ class DatabaseClient:
         conn.execute("PRAGMA foreign_keys=ON")
         return conn
 
+    # ── Schema version ────────────────────────────────────────────────────────
+    # Bump this number every time you add columns/tables.
+    # Each migration step is idempotent (safe to run on an already-upgraded DB).
+    SCHEMA_VERSION = 2
+
+    # Each entry is (target_version, sql_or_callable).
+    # SQL strings are executed directly; callables receive the connection.
+    _MIGRATIONS = [
+        # v1 → v2: add Quantity column to inventory
+        (2, 'ALTER TABLE inventory ADD COLUMN "Quantity" INTEGER DEFAULT 1'),
+    ]
+
     def _init_db(self):
         with self._lock, self._connect() as conn:
+            # Create base tables (IF NOT EXISTS — safe on any version)
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS inventory (
                     "Item ID"          TEXT PRIMARY KEY,
@@ -85,12 +98,35 @@ class DatabaseClient:
                     "Notes"             TEXT DEFAULT '',
                     "Created At"        TEXT DEFAULT ''
                 );
+                CREATE TABLE IF NOT EXISTS schema_version (
+                    version INTEGER PRIMARY KEY
+                );
             """)
-            # Migration: add Quantity column if it doesn't exist (existing DBs)
+            self._run_migrations(conn)
+
+    def _run_migrations(self, conn):
+        """Apply any pending schema migrations in order, then record the version."""
+        row = conn.execute("SELECT version FROM schema_version LIMIT 1").fetchone()
+        current = row["version"] if row else 0
+
+        for target_version, migration in self._MIGRATIONS:
+            if current >= target_version:
+                continue
             try:
-                conn.execute('ALTER TABLE inventory ADD COLUMN "Quantity" INTEGER DEFAULT 1')
-            except sqlite3.OperationalError:
-                pass  # Column already exists
+                if callable(migration):
+                    migration(conn)
+                else:
+                    conn.execute(migration)
+                log.info("DB migration applied: v%d", target_version)
+            except sqlite3.OperationalError as e:
+                # Column/table already exists — migration was already applied
+                log.debug("Migration v%d skipped (already applied): %s", target_version, e)
+
+        # Record current schema version
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
+            (self.SCHEMA_VERSION,),
+        )
 
     # ── Cache helpers ─────────────────────────────────────────────────────────
 
