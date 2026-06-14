@@ -119,6 +119,10 @@ syncer = SheetsSyncer(_sheets_client)
 
 _last_sync_sheet_id = ""
 
+# OAuth PKCE verifiers stored server-side (keyed by state) so the system
+# browser callback can retrieve them regardless of which session it has.
+_oauth_verifiers: dict = {}
+
 
 def _background_pull_loop():
     """Pull from Google Sheets every 5 minutes in a background daemon thread."""
@@ -1369,8 +1373,6 @@ def oauth_google_start():
         code_challenge = base64.urlsafe_b64encode(
             hashlib.sha256(code_verifier.encode()).digest()
         ).rstrip(b"=").decode()
-        session["oauth_code_verifier"] = code_verifier
-
         flow = Flow.from_client_secrets_file(
             secrets_path,
             scopes=SCOPES,
@@ -1383,6 +1385,10 @@ def oauth_google_start():
             code_challenge=code_challenge,
             code_challenge_method="S256",
         )
+        # Store verifier server-side keyed by state — NOT in session cookie.
+        # The callback arrives in the system browser which has a different
+        # session, so a cookie-based store would lose the verifier.
+        _oauth_verifiers[state] = code_verifier
         session["oauth_state"] = state
 
         # Open in the system browser — avoids Google's embedded-browser block.
@@ -1411,15 +1417,17 @@ def oauth_google_callback():
         from google_auth_oauthlib.flow import Flow
         secrets_path = str(_BASE / "client_secrets.json")
         redirect_uri = _oauth_redirect_uri()
+        state = request.args.get("state", "")
+        code_verifier = _oauth_verifiers.pop(state, None)
         flow = Flow.from_client_secrets_file(
             secrets_path,
             scopes=SCOPES,
             redirect_uri=redirect_uri,
-            state=session.get("oauth_state"),
+            state=state,
         )
         flow.fetch_token(
             authorization_response=request.url,
-            code_verifier=session.pop("oauth_code_verifier", None),
+            code_verifier=code_verifier,
         )
         creds = flow.credentials
 
