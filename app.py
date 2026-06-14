@@ -1230,6 +1230,7 @@ def _oauth_redirect_uri():
 @login_required
 def oauth_google_start():
     """Start the Google OAuth2 flow — redirect user to Google's consent screen."""
+    import hashlib, secrets as _secrets, base64
     try:
         from google_auth_oauthlib.flow import Flow
         secrets_path = str(_BASE / "client_secrets.json")
@@ -1241,6 +1242,13 @@ def oauth_google_start():
             )
             return redirect(url_for("settings_view"))
 
+        # PKCE — required by Google for Desktop/installed apps
+        code_verifier = _secrets.token_urlsafe(96)[:128]
+        code_challenge = base64.urlsafe_b64encode(
+            hashlib.sha256(code_verifier.encode()).digest()
+        ).rstrip(b"=").decode()
+        session["oauth_code_verifier"] = code_verifier
+
         flow = Flow.from_client_secrets_file(
             secrets_path,
             scopes=SCOPES,
@@ -1249,7 +1257,9 @@ def oauth_google_start():
         auth_url, state = flow.authorization_url(
             access_type="offline",
             include_granted_scopes="true",
-            prompt="consent",   # always ask so we always get a refresh_token
+            prompt="consent",               # always ask so we get a refresh_token
+            code_challenge=code_challenge,
+            code_challenge_method="S256",
         )
         session["oauth_state"] = state
         return redirect(auth_url)
@@ -1272,7 +1282,10 @@ def oauth_google_callback():
             redirect_uri=redirect_uri,
             state=session.get("oauth_state"),
         )
-        flow.fetch_token(authorization_response=request.url)
+        flow.fetch_token(
+            authorization_response=request.url,
+            code_verifier=session.pop("oauth_code_verifier", None),
+        )
         creds = flow.credentials
 
         token_json = json.dumps({
