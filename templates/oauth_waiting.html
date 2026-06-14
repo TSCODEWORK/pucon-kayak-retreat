@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Connecting Google — Pucon Kayak Retreat{% endblock %}
+
+{% block content %}
+<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;text-align:center;gap:1.5rem">
+
+  <div style="font-size:2.5rem">🔗</div>
+
+  <div>
+    <h2 style="margin:0 0 .4rem">Complete sign-in in your browser</h2>
+    <p class="text-muted" style="margin:0;max-width:400px">
+      A browser window opened with the Google sign-in page.<br>
+      Once you approve access, this page will update automatically.
+    </p>
+  </div>
+
+  <!-- Animated spinner -->
+  <div id="spinner" style="display:flex;align-items:center;gap:.6rem;color:var(--text-muted);font-size:.9rem">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+         style="animation:spin 1s linear infinite">
+      <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+    </svg>
+    Waiting for Google…
+  </div>
+
+  <p id="status-msg" class="text-xs text-muted"></p>
+
+  <a href="{{ url_for('settings_view') }}" class="btn btn-ghost btn-sm" style="margin-top:.5rem">
+    Cancel
+  </a>
+</div>
+
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+<script>
+(function () {
+  var attempts = 0;
+  var maxAttempts = 150;  // 5 minutes at 2s interval
+
+  function poll() {
+    attempts++;
+    if (attempts > maxAttempts) {
+      document.getElementById('spinner').style.display = 'none';
+      document.getElementById('status-msg').textContent =
+        'Timed out — please try again.';
+      return;
+    }
+
+    fetch('{{ url_for("api_oauth_status") }}')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.connected) {
+          document.getElementById('spinner').innerHTML =
+            '<span style="color:var(--green-600);font-weight:700">✓ Connected!</span>';
+          setTimeout(function () {
+            window.location.href = '{{ url_for("settings_view") }}';
+          }, 800);
+        } else {
+          setTimeout(poll, 2000);
+        }
+      })
+      .catch(function () {
+        setTimeout(poll, 3000);
+      });
+  }
+
+  setTimeout(poll, 2000);
+})();
+</script>
+{% endblock %}

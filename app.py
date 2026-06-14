@@ -1229,8 +1229,14 @@ def _oauth_redirect_uri():
 @app.route("/oauth/google")
 @login_required
 def oauth_google_start():
-    """Start the Google OAuth2 flow — redirect user to Google's consent screen."""
-    import hashlib, secrets as _secrets, base64
+    """Start the Google OAuth2 flow.
+
+    When running as a bundled desktop app the webview is an embedded browser —
+    Google blocks OAuth in embedded browsers.  We open the consent URL in the
+    user's default system browser instead and return a waiting page that polls
+    /api/oauth-status and auto-navigates once the token arrives.
+    """
+    import hashlib, secrets as _secrets, base64, webbrowser
     try:
         from google_auth_oauthlib.flow import Flow
         secrets_path = str(_BASE / "client_secrets.json")
@@ -1262,6 +1268,14 @@ def oauth_google_start():
             code_challenge_method="S256",
         )
         session["oauth_state"] = state
+
+        # Open in the system browser — avoids Google's embedded-browser block.
+        # Falls back to a plain redirect if webbrowser.open fails (e.g. running
+        # in a terminal during development).
+        opened = webbrowser.open(auth_url)
+        if opened:
+            return render_template("oauth_waiting.html")
+        # Fallback: plain redirect (dev / non-bundled mode)
         return redirect(auth_url)
     except Exception as e:
         flash(f"Could not start Google sign-in: {e}", "error")
@@ -1269,9 +1283,14 @@ def oauth_google_start():
 
 
 @app.route("/oauth/callback")
-@login_required
 def oauth_google_callback():
-    """Handle Google's redirect after the user grants permission."""
+    """Handle Google's redirect after the user grants permission.
+
+    This URL is opened in the system browser (not the webview), so we return a
+    self-contained success/error page that the user can close.  The webview's
+    oauth_waiting.html page polls /api/oauth-status and navigates back to
+    Settings automatically once the token is stored.
+    """
     try:
         from google_auth_oauthlib.flow import Flow
         secrets_path = str(_BASE / "client_secrets.json")
@@ -1300,10 +1319,19 @@ def oauth_google_callback():
         # Hot-reload the live client — no restart needed
         _sheets_client.reset_connection(oauth_token_json=token_json)
         session.pop("oauth_state", None)
-        flash("Google account connected! Now paste your Sheet URL below and save.", "success")
+        return render_template("oauth_callback_done.html", success=True)
     except Exception as e:
-        flash(f"Google sign-in failed: {e}", "error")
-    return redirect(url_for("settings_view"))
+        log.error("OAuth callback error: %s", e)
+        return render_template("oauth_callback_done.html", success=False, error=str(e))
+
+
+@app.route("/api/oauth-status")
+@login_required
+def api_oauth_status():
+    """Polling endpoint used by oauth_waiting.html to detect when sign-in completes."""
+    settings = db.get_settings()
+    connected = len(settings.get("google_oauth_token", "") or "") > 10
+    return jsonify({"connected": connected})
 
 
 @app.route("/oauth/disconnect", methods=["POST"])
