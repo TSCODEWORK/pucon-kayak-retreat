@@ -1,5 +1,5 @@
 {
-  "version": "1.0.1",
-  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.0.1/PuconKayakRetreat.dmg",
-  "release_notes": "Pricing fix, inventory view toggle, OAuth improvements, auto-update"
+  "version": "1.0.2",
+  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.0.2/PuconKayakRetreat.dmg",
+  "release_notes": "Fix blank screen on launch — wait for Flask before opening window"
 }
