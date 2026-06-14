@@ -1,6 +1,141 @@
 {% extends "base.html" %}
 {% block title %}Reservations — Pucon Kayak Retreat{% endblock %}
 
+{% block head %}
+<style>
+/* ── Reservation card ──────────────────────────────────────────────────────── */
+.res-card {
+  display: block;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.4rem;
+  margin-bottom: .75rem;
+  text-decoration: none;
+  color: inherit;
+  box-shadow: var(--shadow);
+  transition: box-shadow .15s, border-color .15s, transform .1s;
+  cursor: pointer;
+  position: relative;
+}
+.res-card:hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,.10);
+  border-color: var(--brand-light);
+  transform: translateY(-1px);
+}
+.res-card:active { transform: translateY(0); }
+
+.res-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: .75rem;
+}
+.res-card-name {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+.res-card-sub {
+  font-size: .78rem;
+  color: var(--text-muted);
+  margin-top: .15rem;
+}
+.res-card-badges {
+  display: flex;
+  gap: .4rem;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.res-card-mid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  gap: .5rem 1.5rem;
+  align-items: start;
+  padding: .85rem 1rem;
+  background: var(--slate-50);
+  border-radius: var(--radius-sm);
+  margin-bottom: .75rem;
+}
+@media (max-width: 700px) {
+  .res-card-mid { grid-template-columns: 1fr 1fr; }
+}
+
+.res-card-field-label {
+  font-size: .65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--text-muted);
+  margin-bottom: .15rem;
+}
+.res-card-field-value {
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+.res-card-field-value.muted {
+  font-weight: 400;
+  color: var(--slate-500);
+}
+
+.res-card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+.res-card-items {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  font-size: .8rem;
+  color: var(--slate-500);
+}
+.res-card-items-icon { font-size: .9rem; }
+.res-card-arrow {
+  font-size: .85rem;
+  color: var(--brand);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+/* Left accent bar by status */
+.res-card.upcoming    { border-left: 3.5px solid var(--brand); }
+.res-card.checked-out { border-left: 3.5px solid var(--amber-600); }
+.res-card.returned    { border-left: 3.5px solid var(--green-600); }
+.res-card.canceled    { border-left: 3.5px solid var(--slate-300); opacity: .7; }
+
+/* ── Filter chips ──────────────────────────────────────────────────────────── */
+.filter-chips {
+  display: flex;
+  gap: .4rem;
+  flex-wrap: wrap;
+  margin-bottom: .85rem;
+}
+.filter-chip {
+  display: inline-block;
+  padding: .35rem .9rem;
+  border-radius: 2rem;
+  font-size: .78rem;
+  font-weight: 600;
+  border: 1.5px solid var(--border);
+  color: var(--text-muted);
+  text-decoration: none;
+  background: var(--card);
+  transition: all .15s;
+}
+.filter-chip:hover { border-color: var(--brand); color: var(--brand-dark); }
+.filter-chip.active { background: var(--brand); border-color: var(--brand); color: #fff; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
   <div class="page-title">
@@ -11,37 +146,27 @@
 </div>
 
 {% if sheets_error %}
-  <div class="alert alert-error">{{ sheets_error }}</div>
+  <div class="alert alert-error" style="margin-bottom:1rem">{{ sheets_error }}</div>
 {% endif %}
 
-<!-- Quick-filter chips -->
-<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem">
+<!-- Filter chips -->
+<div class="filter-chips">
   <a href="{{ url_for('reservations') }}"
-    class="btn btn-sm {% if not status_filter and not q and not date_filter %}btn-primary{% else %}btn-ghost{% endif %}">
-    All
-  </a>
+    class="filter-chip {% if not status_filter and not q and not date_filter %}active{% endif %}">All</a>
   <a href="{{ url_for('reservations', status='Upcoming') }}"
-    class="btn btn-sm {% if status_filter == 'Upcoming' %}btn-primary{% else %}btn-ghost{% endif %}">
-    Upcoming
-  </a>
+    class="filter-chip {% if status_filter == 'Upcoming' %}active{% endif %}">⏳ Upcoming</a>
   <a href="{{ url_for('reservations', status='Checked Out') }}"
-    class="btn btn-sm {% if status_filter == 'Checked Out' %}btn-primary{% else %}btn-ghost{% endif %}">
-    Checked Out
-  </a>
+    class="filter-chip {% if status_filter == 'Checked Out' %}active{% endif %}">🚣 Checked Out</a>
   <a href="{{ url_for('reservations', status='Returned') }}"
-    class="btn btn-sm {% if status_filter == 'Returned' %}btn-primary{% else %}btn-ghost{% endif %}">
-    Past Rentals
-  </a>
+    class="filter-chip {% if status_filter == 'Returned' %}active{% endif %}">✓ Past Rentals</a>
   <a href="{{ url_for('reservations', status='Canceled') }}"
-    class="btn btn-sm {% if status_filter == 'Canceled' %}btn-primary{% else %}btn-ghost{% endif %}">
-    Canceled
-  </a>
+    class="filter-chip {% if status_filter == 'Canceled' %}active{% endif %}">✕ Canceled</a>
 </div>
 
-<!-- Filters -->
-<form method="GET" class="filter-bar" style="margin-bottom:1.25rem">
+<!-- Search / filter bar -->
+<form method="GET" class="filter-bar" style="margin-bottom:1.4rem">
   <input class="form-control search-input" type="search" name="q"
-    placeholder="Search by name, email, phone, ID, kayak…" value="{{ q }}">
+    placeholder="Search by name, email, phone, ID, kayak…" value="{{ q }}" style="flex:1;min-width:180px">
   <select class="form-control" name="status" style="max-width:180px">
     <option value="">All statuses</option>
     {% for s in ['Upcoming','Checked Out','Returned','Canceled'] %}
@@ -55,70 +180,82 @@
   {% endif %}
 </form>
 
-<div class="card">
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>Customer</th>
-          <th>Items</th>
-          <th>Start</th>
-          <th>End</th>
-          <th>Type</th>
-          <th>Payment</th>
-          <th>Waiver</th>
-          <th>Status</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% if reservations %}
-          {% for r in reservations %}
-          <tr>
-            <td><code style="font-size:.75rem">{{ r.get('Reservation ID','') }}</code></td>
-            <td>
-              <div style="font-weight:600">{{ r.get('Customer Name','—') }}</div>
-              <div style="font-size:.75rem;color:var(--text-muted)">{{ r.get('Customer Phone','') }}</div>
-            </td>
-            <td style="font-size:.8rem;max-width:180px">{{ r.get('Item IDs','—') }}</td>
-            <td style="white-space:nowrap;font-size:.85rem">{{ r.get('Start Date & Time','') | fmt_datetime }}</td>
-            <td style="white-space:nowrap;font-size:.85rem">{{ r.get('End Date & Time','') | fmt_datetime }}</td>
-            <td style="font-size:.8rem">{{ r.get('Rental Type','') }}</td>
-            <td>
-              {% set ps = r.get('Payment Status','') %}
-              {% if ps == 'Paid in Full' %}
-                <span class="badge badge-paid">Paid</span>
-              {% elif ps == 'Deposit Paid' %}
-                <span class="badge badge-deposit">Deposit</span>
-              {% else %}
-                <span class="badge badge-unpaid">Unpaid</span>
-              {% endif %}
-              {% if r.get('Payment Amount') %}
-                <div style="font-size:.75rem;color:var(--text-muted);margin-top:.15rem">{{ r.get('Payment Amount') | fmt_currency }}</div>
-              {% endif %}
-            </td>
-            <td style="text-align:center">
-              {% if r.get('Waiver Signed') == 'Yes' %}
-                <span style="color:var(--green-600);font-size:1.1rem">✓</span>
-              {% else %}
-                <span style="color:var(--red-600);font-size:1.1rem">✗</span>
-              {% endif %}
-            </td>
-            <td>
-              {% set st = r.get('Reservation Status','') %}
-              <span class="badge badge-{{ st.lower().replace(' ','-') }}">{{ st }}</span>
-            </td>
-            <td>
-              <a href="{{ url_for('reservation_detail', res_id=r['Reservation ID']) }}" class="btn btn-ghost btn-sm">View →</a>
-            </td>
-          </tr>
-          {% endfor %}
-        {% else %}
-          <tr><td colspan="10" class="empty-state" style="padding:2.5rem">No reservations found.</td></tr>
-        {% endif %}
-      </tbody>
-    </table>
+<!-- Reservation cards -->
+{% if reservations %}
+  {% for r in reservations %}
+    {% set st = r.get('Reservation Status','') %}
+    {% set ps = r.get('Payment Status','') %}
+    <a href="{{ url_for('reservation_detail', res_id=r['Reservation ID']) }}"
+      class="res-card {{ st.lower().replace(' ','-') }}">
+
+      <!-- Top row: name + badges -->
+      <div class="res-card-top">
+        <div>
+          <div class="res-card-name">{{ r.get('Customer Name','—') }}</div>
+          <div class="res-card-sub">
+            {% if r.get('Customer Phone') %}{{ r.get('Customer Phone') }}{% endif %}
+            {% if r.get('Customer Phone') and r.get('Customer Email') %} · {% endif %}
+            {% if r.get('Customer Email') %}{{ r.get('Customer Email') }}{% endif %}
+          </div>
+        </div>
+        <div class="res-card-badges">
+          <span class="badge badge-{{ st.lower().replace(' ','-') }}">{{ st }}</span>
+          {% if ps == 'Paid in Full' %}
+            <span class="badge badge-paid">Paid</span>
+          {% elif ps == 'Deposit Paid' %}
+            <span class="badge badge-deposit">Deposit</span>
+          {% else %}
+            <span class="badge badge-unpaid">Unpaid</span>
+          {% endif %}
+          {% if r.get('Waiver Signed') == 'Yes' %}
+            <span style="font-size:.75rem;color:var(--green-600);font-weight:600">✓ Waiver</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Mid: key fields -->
+      <div class="res-card-mid">
+        <div>
+          <div class="res-card-field-label">Check-out</div>
+          <div class="res-card-field-value">{{ r.get('Start Date & Time','') | fmt_datetime }}</div>
+        </div>
+        <div>
+          <div class="res-card-field-label">Return by</div>
+          <div class="res-card-field-value">{{ r.get('End Date & Time','') | fmt_datetime }}</div>
+        </div>
+        <div>
+          <div class="res-card-field-label">Type</div>
+          <div class="res-card-field-value">{{ r.get('Rental Type','—') }}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="res-card-field-label">Total</div>
+          {% if r.get('Payment Amount') %}
+            <div class="res-card-field-value" style="font-size:1rem;color:var(--brand-dark)">{{ r.get('Payment Amount') | fmt_currency }}</div>
+          {% else %}
+            <div class="res-card-field-value muted">—</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Bottom: items + arrow -->
+      <div class="res-card-bottom">
+        <div class="res-card-items">
+          <span class="res-card-items-icon">🛶</span>
+          <span>{{ r.get('Item IDs','—') }}</span>
+        </div>
+        <div class="res-card-arrow">View details →</div>
+      </div>
+
+    </a>
+  {% endfor %}
+{% else %}
+  <div class="card">
+    <div class="empty-state" style="padding:3rem">
+      No reservations found.
+      <br><br>
+      <a href="{{ url_for('new_reservation') }}" class="btn btn-primary">+ Create First Booking</a>
+    </div>
   </div>
-</div>
+{% endif %}
+
 {% endblock %}
