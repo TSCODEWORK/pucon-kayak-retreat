@@ -1,10 +1,19 @@
 import os
 import re
 import sys
+import csv
+import io
 import uuid
 import json
 import math
+import stat
+import signal
 import logging
+import tempfile
+import hashlib
+import secrets as _secrets
+import base64
+import webbrowser
 import calendar as cal_module
 import functools
 import threading
@@ -25,7 +34,7 @@ from sync import SheetsSyncer
 
 log = logging.getLogger(__name__)
 
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 
 # OAuth2 over HTTP is fine for localhost (Desktop app running on the user's machine)
 os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
@@ -95,10 +104,8 @@ def get_rate_currency():
     """Returns the currency in which item rates are stored in the DB (default 'CLP')."""
     return db.get_settings().get("rate_currency", "CLP")
 
-# Load PIN from DB (falls back to env var, then "1234")
+# Load startup settings for one-time init (sheet ID, OAuth token)
 _startup_settings = db.get_settings()
-_saved_pin = _startup_settings.get("app_pin", "")
-APP_PIN = _saved_pin or os.environ.get("APP_PIN", "1234")
 
 # Load sheet ID from DB settings (overrides env var so it survives restarts)
 _saved_sheet_id = _startup_settings.get("sheet_id", "")
@@ -124,7 +131,18 @@ _last_sync_sheet_id = ""
 
 # OAuth PKCE verifiers stored server-side (keyed by state) so the system
 # browser callback can retrieve them regardless of which session it has.
-_oauth_verifiers: dict = {}
+# Protected by a lock (F-15); entries expire after 10 minutes (TTL).
+_oauth_verifiers_lock = threading.Lock()
+_oauth_verifiers: dict = {}   # state → {"verifier": str, "expires": float}
+
+
+def _prune_oauth_verifiers():
+    """Remove expired PKCE verifiers (older than 10 minutes)."""
+    now = time.time()
+    with _oauth_verifiers_lock:
+        expired = [k for k, v in _oauth_verifiers.items() if v["expires"] < now]
+        for k in expired:
+            del _oauth_verifiers[k]
 
 
 def _background_pull_loop():
@@ -180,10 +198,14 @@ def login():
         return redirect(url_for("dashboard"))
     error = None
     if request.method == "POST":
-        if request.form.get("pin") == APP_PIN:
+        app_pin = db.get_settings().get("app_pin", "") or os.environ.get("APP_PIN", "1234")
+        if request.form.get("pin") == app_pin:
             session["authenticated"] = True
             session.permanent = True
-            next_url = request.args.get("next") or url_for("dashboard")
+            # D-3: validate next param to prevent open redirect
+            next_url = request.args.get("next", "")
+            if not next_url or not next_url.startswith("/"):
+                next_url = url_for("dashboard")
             return redirect(next_url)
         error = "Incorrect PIN — please try again."
     return render_template("login.html", error=error)
@@ -342,7 +364,7 @@ def dashboard():
                     "is_past": day < today,
                 })
 
-    except SheetsError as e:
+    except (DatabaseError, SheetsError) as e:
         sheets_error = str(e)
 
     return render_template(
@@ -395,15 +417,30 @@ def reservations():
         if status_filter:
             filtered = [r for r in filtered if r.get("Reservation Status") == status_filter]
         if date_filter:
-            filtered = [
-                r for r in filtered
-                if str(r.get("Start Date & Time", "")).startswith(date_filter)
-                or str(r.get("End Date & Time", "")).startswith(date_filter)
-            ]
+            # F-1: check if the selected date falls *within* the reservation's range,
+            # not just a string-prefix match on start/end.
+            try:
+                filter_dt = datetime.strptime(date_filter, "%Y-%m-%d").date()
+                def _overlaps(r):
+                    s = _parse_dt(r.get("Start Date & Time", ""))
+                    e = _parse_dt(r.get("End Date & Time", ""))
+                    if not s:
+                        return False
+                    s_date = s.date()
+                    e_date = e.date() if e else s_date
+                    return s_date <= filter_dt <= e_date
+                filtered = [r for r in filtered if _overlaps(r)]
+            except ValueError:
+                # Fallback to prefix match if the date string is malformed
+                filtered = [
+                    r for r in filtered
+                    if str(r.get("Start Date & Time", "")).startswith(date_filter)
+                    or str(r.get("End Date & Time", "")).startswith(date_filter)
+                ]
 
         filtered.sort(key=lambda r: r.get("Start Date & Time", ""), reverse=True)
 
-    except SheetsError as e:
+    except (DatabaseError, SheetsError) as e:
         sheets_error = str(e)
 
     return render_template(
@@ -501,13 +538,15 @@ def new_reservation():
 
         if not errors:
             try:
-                conflicts = db.check_conflicts(item_ids, start_str, end_str)
+                # D-1: force_refresh bypasses the 5s cache so a concurrent booking
+                # cannot slip through the conflict check window.
+                conflicts = db.check_conflicts(item_ids, start_str, end_str, force_refresh=True)
                 if conflicts:
                     names = ", ".join(c.get("Customer Name", "?") for c in conflicts)
                     errors.append(
                         f"Booking conflict: one or more items are already reserved by {names} during this time."
                     )
-            except SheetsError as e:
+            except (DatabaseError, SheetsError) as e:
                 errors.append(str(e))
 
         if errors:
@@ -543,6 +582,26 @@ def new_reservation():
 
     return render_template("new_reservation.html", inventory=inventory, form_data=form_data,
                            item_ids=[], active_reservations=active_reservations)
+
+
+# ── Discount helper (F-6: single source of truth for tier logic) ──────────────
+
+def _kayak_discount_pct(reservation: dict, reserved_items: list) -> int:
+    """Return the applicable discount percentage for a kayak reservation, or 0."""
+    has_kayak = any(i.get("Category", "") in KAYAK_CATEGORIES for i in reserved_items)
+    if not has_kayak:
+        return 0
+    s = _parse_dt(reservation.get("Start Date & Time", ""))
+    e = _parse_dt(reservation.get("End Date & Time", ""))
+    if not s or not e:
+        return 0
+    days = (e - s).days
+    if days < 10:   return 0
+    if days <= 15:  return 5
+    if days <= 20:  return 10
+    if days <= 25:  return 15
+    if days <= 30:  return 20
+    return 25
 
 
 # ── Reservation detail ────────────────────────────────────────────────────────
@@ -618,33 +677,52 @@ def reservation_detail(res_id):
                 start_str = parsed["start_str"]
                 end_str   = parsed["end_str"]
                 pay_amt   = parsed["pay_amt"]
+
+                if not edit_errors:
+                    conflicts = db.check_conflicts(item_ids, start_str, end_str, exclude_id=res_id, force_refresh=True)
+                    if conflicts:
+                        names = ", ".join(c.get("Customer Name", "?") for c in conflicts)
+                        edit_errors.append(f"Booking conflict with {names}.")
+
                 if edit_errors:
                     for err in edit_errors:
                         flash(err, "error")
-                    return redirect(url_for("reservation_detail", res_id=res_id))
+                    # F-2: re-render with submitted values so nothing is lost; edit panel stays open
+                    all_res2 = db.get_reservations(force_refresh=True)
+                    res2 = next((r for r in all_res2 if str(r.get("Reservation ID")) == res_id), reservation)
+                    inv2 = db.get_inventory()
+                    item_ids2 = [i.strip() for i in str(res2.get("Item IDs","")).split(",") if i.strip()]
+                    reserved_items2 = [i for i in inv2 if str(i.get("Item ID")) in item_ids2]
+                    return render_template(
+                        "reservation_detail.html",
+                        reservation=res2,
+                        inventory=inv2,
+                        reserved_items=reserved_items2,
+                        item_ids=item_ids2,
+                        discount_pct=0, discount_days=0, has_kayak_items=False,
+                        edit_open=True,
+                        edit_form_data=request.form.to_dict(),
+                    )
 
-                conflicts = db.check_conflicts(item_ids, start_str, end_str, exclude_id=res_id)
-                if conflicts:
-                    names = ", ".join(c.get("Customer Name", "?") for c in conflicts)
-                    flash(f"Booking conflict with {names}.", "error")
-                    return redirect(url_for("reservation_detail", res_id=res_id))
-
-                updates = {
-                    "Customer Name": request.form.get("customer_name", "").strip(),
-                    "Customer Phone": request.form.get("customer_phone", "").strip(),
-                    "Customer Email": request.form.get("customer_email", "").strip(),
-                    "Item IDs": ", ".join(item_ids),
-                    "Start Date & Time": start_str,
-                    "End Date & Time": end_str,
-                    "Rental Type": request.form.get("rental_type", ""),
-                    "Payment Status": request.form.get("payment_status", "Unpaid"),
-                    "Payment Amount": str(pay_amt),
-                    "Waiver Signed": "Yes" if request.form.get("waiver_signed") else "No",
-                    "Notes": request.form.get("notes", "").strip(),
-                }
-                db.update_reservation(res_id, updates)
-                _sync()
-                flash("Reservation updated.", "success")
+                try:
+                    updates = {
+                        "Customer Name": request.form.get("customer_name", "").strip(),
+                        "Customer Phone": request.form.get("customer_phone", "").strip(),
+                        "Customer Email": request.form.get("customer_email", "").strip(),
+                        "Item IDs": ", ".join(item_ids),
+                        "Start Date & Time": start_str,
+                        "End Date & Time": end_str,
+                        "Rental Type": request.form.get("rental_type", ""),
+                        "Payment Status": request.form.get("payment_status", "Unpaid"),
+                        "Payment Amount": str(pay_amt),
+                        "Waiver Signed": "Yes" if request.form.get("waiver_signed") else "No",
+                        "Notes": request.form.get("notes", "").strip(),
+                    }
+                    db.update_reservation(res_id, updates)
+                    _sync()
+                    flash("Reservation updated.", "success")
+                except DatabaseError as e:
+                    flash(f"Error saving reservation: {e}", "error")
 
             return redirect(url_for("reservation_detail", res_id=res_id))
 
@@ -657,23 +735,15 @@ def reservation_detail(res_id):
         item_ids = [i.strip() for i in str(reservation.get("Item IDs", "")).split(",") if i.strip()]
         reserved_items = [i for i in inventory if str(i.get("Item ID")) in item_ids]
 
-        # Discount calculation (kayak rentals only, 10+ days)
-        discount_pct = 0
+        # F-6: discount tier in a single shared helper (also used by apply_discount)
+        discount_pct = _kayak_discount_pct(reservation, reserved_items)
         discount_days = 0
-        has_kayak_items = any(
-            i.get("Category", "") in KAYAK_CATEGORIES for i in reserved_items
-        )
+        has_kayak_items = any(i.get("Category", "") in KAYAK_CATEGORIES for i in reserved_items)
         if has_kayak_items:
-            start_dt_d = _parse_dt(reservation.get("Start Date & Time", ""))
-            end_dt_d = _parse_dt(reservation.get("End Date & Time", ""))
-            if start_dt_d and end_dt_d:
-                discount_days = (end_dt_d - start_dt_d).days
-                if discount_days >= 10:
-                    if discount_days <= 15:   discount_pct = 5
-                    elif discount_days <= 20: discount_pct = 10
-                    elif discount_days <= 25: discount_pct = 15
-                    elif discount_days <= 30: discount_pct = 20
-                    else:                     discount_pct = 25
+            s = _parse_dt(reservation.get("Start Date & Time", ""))
+            e = _parse_dt(reservation.get("End Date & Time", ""))
+            if s and e:
+                discount_days = (e - s).days
 
         return render_template(
             "reservation_detail.html",
@@ -684,9 +754,11 @@ def reservation_detail(res_id):
             discount_pct=discount_pct,
             discount_days=discount_days,
             has_kayak_items=has_kayak_items,
+            edit_open=False,
+            edit_form_data={},
         )
 
-    except SheetsError as e:
+    except (DatabaseError, SheetsError) as e:
         flash(f"Error: {e}", "error")
         return redirect(url_for("reservations"))
 
@@ -712,7 +784,7 @@ def inventory_view():
         if status_filter:
             items = [i for i in items if i.get("Status") == status_filter]
 
-    except SheetsError as e:
+    except (DatabaseError, SheetsError) as e:
         sheets_error = str(e)
 
     settings = db.get_settings()
@@ -806,7 +878,6 @@ def import_inventory():
     lines = raw.splitlines()
     delimiter = "\t" if "\t" in lines[0] else ","
 
-    import csv, io
     reader = csv.DictReader(io.StringIO(raw), delimiter=delimiter)
 
     # Flexible column aliases → canonical DB column
@@ -844,6 +915,21 @@ def import_inventory():
     imported = skipped = 0
     errors = []
     existing_ids = {str(i.get("Item ID")) for i in db.get_inventory()}
+
+    # F-14: Check that the header contains at least one recognizable Item ID column
+    # before processing any rows.
+    if reader.fieldnames:
+        has_id_col = any(
+            ALIASES.get((f or "").strip().lower()) == "Item ID"
+            for f in reader.fieldnames
+        )
+        if not has_id_col:
+            flash(
+                "No 'Item ID' column found in the pasted data. "
+                "Make sure your first row is a header row with column names.",
+                "error",
+            )
+            return redirect(url_for("inventory_view"))
 
     for row_num, row in enumerate(reader, start=2):
         # Map incoming column names → canonical names
@@ -917,8 +1003,15 @@ def update_inventory(item_id):
         if "condition_notes" in request.form:
             updates["Condition Notes"] = request.form.get("condition_notes", "")
         quantity = request.form.get("quantity")
-        if quantity:
-            updates["Quantity"] = quantity
+        if quantity is not None and quantity != "":
+            try:
+                qty_int = int(quantity)
+                if qty_int <= 0:
+                    raise ValueError
+                updates["Quantity"] = str(qty_int)
+            except (ValueError, TypeError):
+                flash("Quantity must be a positive whole number.", "error")
+                return redirect(url_for("inventory_view"))
         # Per-item rates — allow blank to clear a rate
         for field, col in [
             ("hourly_rate",    "Hourly Rate"),
@@ -959,7 +1052,7 @@ def calendar():
             for r in reservations
             if r.get("Reservation Status") not in ("Canceled",)
         ]
-    except SheetsError as e:
+    except (DatabaseError, SheetsError) as e:
         sheets_error = str(e)
 
     return render_template("calendar.html", cal_events=events, sheets_error=sheets_error)
@@ -1139,11 +1232,12 @@ def settings_view():
                 flash(f"Rates applied to {count} item(s).", "success")
 
         elif action == "change_pin":
-            global APP_PIN
             current_pin_input = request.form.get("current_pin", "").strip()
             new_pin = request.form.get("new_pin", "").strip()
             confirm_pin = request.form.get("confirm_pin", "").strip()
-            if not current_pin_input or current_pin_input != APP_PIN:
+            # F-16: read PIN from DB each time — no stale module-level global
+            stored_pin = db.get_settings().get("app_pin", "") or os.environ.get("APP_PIN", "1234")
+            if not current_pin_input or current_pin_input != stored_pin:
                 flash("Current PIN is incorrect.", "error")  # (#8)
             elif not new_pin:
                 flash("PIN cannot be empty.", "error")
@@ -1153,7 +1247,6 @@ def settings_view():
                 flash("PIN must be at least 4 characters.", "error")
             else:
                 db.update_settings({"app_pin": new_pin})
-                APP_PIN = new_pin
                 flash("PIN updated. Use the new PIN next time you sign in.", "success")
 
         elif action == "update_general":
@@ -1375,7 +1468,6 @@ def oauth_google_start():
     user's default system browser instead and return a waiting page that polls
     /api/oauth-status and auto-navigates once the token arrives.
     """
-    import hashlib, secrets as _secrets, base64, webbrowser
     try:
         from google_auth_oauthlib.flow import Flow
         secrets_path = str(_BASE / "client_secrets.json")
@@ -1405,9 +1497,10 @@ def oauth_google_start():
             code_challenge_method="S256",
         )
         # Store verifier server-side keyed by state — NOT in session cookie.
-        # The callback arrives in the system browser which has a different
-        # session, so a cookie-based store would lose the verifier.
-        _oauth_verifiers[state] = code_verifier
+        # Protected by lock; expires after 10 min to prevent unbounded growth (F-15).
+        _prune_oauth_verifiers()
+        with _oauth_verifiers_lock:
+            _oauth_verifiers[state] = {"verifier": code_verifier, "expires": time.time() + 600}
         session["oauth_state"] = state
 
         # Open in the system browser — avoids Google's embedded-browser block.
@@ -1415,7 +1508,8 @@ def oauth_google_start():
         # in a terminal during development).
         opened = webbrowser.open(auth_url)
         if opened:
-            return render_template("oauth_waiting.html")
+            # F-13: pass auth_url so waiting page can show it as fallback
+            return render_template("oauth_waiting.html", auth_url=auth_url)
         # Fallback: plain redirect (dev / non-bundled mode)
         return redirect(auth_url)
     except Exception as e:
@@ -1437,7 +1531,15 @@ def oauth_google_callback():
         secrets_path = str(_BASE / "client_secrets.json")
         redirect_uri = _oauth_redirect_uri()
         state = request.args.get("state", "")
-        code_verifier = _oauth_verifiers.pop(state, None)
+        with _oauth_verifiers_lock:
+            entry = _oauth_verifiers.pop(state, None)
+        code_verifier = entry["verifier"] if entry else None
+        if code_verifier is None:
+            return render_template(
+                "oauth_callback_done.html",
+                success=False,
+                error="Invalid or expired OAuth session. Please try signing in again from the app.",
+            )
         flow = Flow.from_client_secrets_file(
             secrets_path,
             scopes=SCOPES,
@@ -1505,6 +1607,9 @@ def apply_discount(res_id):
             flash("No payment amount set to discount.", "error")
             return redirect(url_for("reservation_detail", res_id=res_id))
         discounted = round(current_amount * (1 - pct / 100), 2)
+        if discounted <= 0:
+            flash("Discount would reduce the total to $0 or less — not applied.", "error")
+            return redirect(url_for("reservation_detail", res_id=res_id))
         notes_existing = reservation.get("Notes", "")
         discount_note = f"\n[{pct}% extended rental discount applied — original amount: ${current_amount:.2f}]"
         db.update_reservation(res_id, {
@@ -1552,7 +1657,9 @@ def api_update_check():
 def api_update_download():
     """Download the new DMG in a background thread and track progress."""
     global _update_state
-    download_url = request.json.get("download_url", "")
+    # C-2: guard against missing/non-JSON body
+    data = request.get_json(silent=True) or {}
+    download_url = data.get("download_url", "")
     if not download_url:
         return jsonify({"error": "No download URL provided"}), 400
     if _update_state.get("status") == "downloading":
@@ -1562,7 +1669,6 @@ def api_update_download():
 
     def _do_download():
         global _update_state
-        import tempfile
         tmp = tempfile.mktemp(suffix=".dmg", prefix="pkr_update_")
         try:
             req = urllib.request.Request(
@@ -1607,11 +1713,13 @@ def api_update_progress():
 @login_required
 def api_update_install():
     """Mount the downloaded DMG, write an updater script, launch it, then quit."""
-    import signal, stat
+    # F-17: guard against missing/stale state
+    if _update_state.get("status") != "ready":
+        return jsonify({"error": "No update ready to install"}), 400
 
     dmg_path = _update_state.get("path", "")
     if not dmg_path or not os.path.exists(dmg_path):
-        return jsonify({"error": "DMG not downloaded yet"}), 400
+        return jsonify({"error": "DMG file not found — try downloading again"}), 400
 
     mount_point = "/tmp/pkr_update_vol"
 
