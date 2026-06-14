@@ -113,12 +113,16 @@
       </div>
     </div>
     <div class="card-body">
-      <form method="POST"
-        onsubmit="return confirm('Change the app PIN? Make sure you remember the new one.')">
+      <form method="POST">
         <input type="hidden" name="action" value="change_pin">
+        <div class="form-group" style="margin-bottom:.85rem">
+          <label class="form-label">Current PIN <span class="req">*</span></label>
+          <input class="form-control" type="password" name="current_pin"
+            autocomplete="current-password" placeholder="Enter current PIN" style="max-width:200px">
+        </div>
         <div class="form-grid" style="gap:.85rem;margin-bottom:1rem">
           <div class="form-group">
-            <label class="form-label">New PIN</label>
+            <label class="form-label">New PIN <span class="req">*</span></label>
             <input class="form-control" type="password" name="new_pin"
               autocomplete="new-password" placeholder="Min. 4 characters" minlength="4">
           </div>
@@ -190,20 +194,17 @@
           <button type="submit" class="btn btn-ghost btn-sm">↺ Refresh Rate</button>
         </form>
       </div>
-      <!-- Toggle display currency -->
-      <div style="display:flex;align-items:center;gap:1rem">
+      <!-- Toggle display currency — single form with explicit target (#31) -->
+      {% set cur = get_display_currency() %}
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
         <span class="text-sm text-muted">Display prices in:</span>
-        <form method="POST" action="{{ url_for('toggle_currency') }}">
-          {% set cur = get_display_currency() %}
-          <button type="submit" class="btn {{ 'btn-primary' if cur == 'USD' else 'btn-ghost' }} btn-sm">USD</button>
+        <form method="POST" action="{{ url_for('toggle_currency') }}" style="display:inline-flex;border:1.5px solid var(--border);border-radius:var(--radius-sm);overflow:hidden">
+          <button type="submit" name="currency" value="USD"
+            class="btn btn-sm" style="border-radius:0;border:none;{% if cur == 'USD' %}background:var(--brand);color:#fff;{% endif %}">USD</button>
+          <button type="submit" name="currency" value="CLP"
+            class="btn btn-sm" style="border-radius:0;border:none;border-left:1.5px solid var(--border);{% if cur == 'CLP' %}background:var(--brand);color:#fff;{% endif %}">CLP</button>
         </form>
-        <form method="POST" action="{{ url_for('toggle_currency') }}">
-          {% set cur = get_display_currency() %}
-          <button type="submit" class="btn {{ 'btn-primary' if cur == 'CLP' else 'btn-ghost' }} btn-sm">CLP</button>
-        </form>
-        <span class="text-xs text-muted" style="margin-left:.25rem">
-          {% set cur = get_display_currency() %}Currently showing: <strong>{{ cur }}</strong>
-        </span>
+        <span class="text-xs text-muted">Currently showing: <strong>{{ cur }}</strong></span>
       </div>
     </div>
   </div>
@@ -254,8 +255,8 @@
         </div>
         <div style="margin-left:auto;display:flex;gap:.75rem;flex-wrap:wrap">
           <form method="POST" action="{{ url_for('api_pull') }}"
-            onsubmit="{% if not sheet_id %}alert('Link a Google Sheet first.'); return false;{% endif %}">
-            <button type="submit" class="btn btn-ghost" {% if not sheet_id %}title="Link a sheet first"{% endif %}>
+            onsubmit="{% if not sheet_id %}alert('Link a Google Sheet first.'); return false;{% else %}return confirm('This will overwrite local data from Google Sheets. Any local-only changes will be lost. Continue?');{% endif %}">
+            <button type="submit" class="btn btn-warning" {% if not sheet_id %}title="Link a sheet first"{% endif %}>
               ↓ Pull from Google Sheets
             </button>
           </form>

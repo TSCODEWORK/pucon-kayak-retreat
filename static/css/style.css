@@ -152,6 +152,7 @@ a:hover { color: var(--brand); }
 .nav-cta:hover { background: var(--brand-dark); }
 
 .nav-logout { opacity: .5; font-size: .75rem; }
+.nav-currency-btn { border-left: 1px solid rgba(255,255,255,.2); margin-left: .25rem; padding-left: .75rem; }
 
 /* ── Main content ───────────────────────────────────────────────────────────── */
 .main-content {
@@ -604,4 +605,11 @@ tr:hover td { background: var(--brand-50); }
 }
 @media (max-width: 700px) {
   .step3-grid { grid-template-columns: 1fr !important; }
+}
+@media (max-width: 480px) {
+  /* Hide wizard step labels — numbered circles are enough (#18) */
+  .wp-label { display: none; }
+  /* Stack action bar buttons vertically on phones (#15, #mobile) */
+  .action-bar { flex-direction: column; align-items: stretch; }
+  .action-bar form, .action-bar button { width: 100%; }
 }

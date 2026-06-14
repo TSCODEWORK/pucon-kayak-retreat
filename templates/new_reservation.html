@@ -116,7 +116,7 @@
           <div class="text-sm text-muted" id="step2-dates"></div>
         </div>
         <div style="display:flex;align-items:center;gap:.75rem">
-          <span id="selected-count" class="badge badge-available" style="display:none;font-size:.8rem"></span>
+          <span id="selected-count" class="badge badge-available" style="font-size:.8rem">0 items selected</span>
           <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('sizing-guide-2').classList.toggle('hidden')">📏 Sizing Guide</button>
         </div>
       </div>
@@ -134,9 +134,12 @@
 
     <div class="wizard-nav">
       <button type="button" class="btn btn-ghost" onclick="goStep(1)">← Back</button>
-      <button type="button" class="btn btn-primary btn-lg" id="btn-to-3" onclick="goStep(3)" disabled>
-        Customer Details →
-      </button>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:.4rem">
+        <button type="button" class="btn btn-primary btn-lg" id="btn-to-3" onclick="goStep(3)" disabled>
+          Customer Details →
+        </button>
+        <span id="step2-hint" style="font-size:.78rem;color:var(--text-muted)">Select at least one item above to continue</span>
+      </div>
     </div>
   </div>
 
@@ -190,7 +193,7 @@
                 </select>
               </div>
               <div class="form-group">
-                <label class="form-label">Amount ($)</label>
+                <label class="form-label">Amount ({{ get_display_currency() }})</label>
                 <input class="form-control" type="number" name="payment_amount" id="payment-amount" min="0" step="0.01" placeholder="0.00">
               </div>
             </div>
@@ -230,9 +233,22 @@
 
 </form>
 
-<!-- Data for JS -->
+<!-- Data for JS — also restore form state on validation error (#3) -->
 <script id="inv-data"  type="application/json">{{ inventory | tojson }}</script>
 <script id="res-data"  type="application/json">{{ active_reservations | tojson }}</script>
+<script id="restore-data" type="application/json">{{ {
+  "start": form_data.get('start_datetime',''),
+  "end":   form_data.get('end_datetime',''),
+  "items": item_ids,
+  "name":  form_data.get('customer_name',''),
+  "phone": form_data.get('customer_phone',''),
+  "email": form_data.get('customer_email',''),
+  "notes": form_data.get('notes',''),
+  "payment_status": form_data.get('payment_status',''),
+  "payment_amount": form_data.get('payment_amount',''),
+  "waiver": form_data.get('waiver_signed',''),
+  "restore": (form_data | length) > 0
+} | tojson }}</script>
 {% endblock %}
 
 {% block scripts %}
@@ -309,6 +325,15 @@ function tryGoStep2() {
   if (!drpEnd) {
     showDateError('Please click a return date to complete your selection.');
     return;
+  }
+  // Same-day booking: ensure pickup time is before return time (#22)
+  if (drpStart.getTime() === drpEnd.getTime()) {
+    const st = document.getElementById('drp-start-time').value || '09:00';
+    const et = document.getElementById('drp-end-time').value || '17:00';
+    if (st >= et) {
+      showDateError('For same-day rentals, pickup time must be before the return time.');
+      return;
+    }
   }
   clearDateError();
   goStep(2);
@@ -537,9 +562,12 @@ function equipToggle(card) {
 function updateSelCount() {
   const n = selectedItems.size;
   const badge = document.getElementById('selected-count');
-  badge.style.display = n ? '' : 'none';
-  badge.textContent = `${n} kayak${n!==1?'s':''} selected`;
-  document.getElementById('btn-to-3').disabled = n===0;
+  badge.textContent = `${n} item${n!==1?'s':''} selected`;
+  const btn3 = document.getElementById('btn-to-3');
+  btn3.disabled = n===0;
+  // Show/hide the "select an item" hint (#24)
+  const hint = document.getElementById('step2-hint');
+  if (hint) hint.style.display = n===0 ? '' : 'none';
 }
 
 // ── Summary & Pricing ──────────────────────────────────────────────────────
@@ -585,5 +613,49 @@ async function updatePricing() {
 renderDRP();
 initDRPListeners();
 if (drpStart && drpEnd) updateHiddenFields();
+
+// ── Restore state after server-side validation error (#3) ──────────────────
+(function restoreAfterError() {
+  const rd = JSON.parse(document.getElementById('restore-data').textContent);
+  if (!rd.restore) return;
+
+  // Restore dates
+  if (rd.start) {
+    const [datePart, timePart] = rd.start.split('T');
+    if (datePart) drpStart = parseDate(datePart);
+    if (timePart) document.getElementById('drp-start-time').value = timePart.slice(0,5);
+  }
+  if (rd.end) {
+    const [datePart, timePart] = rd.end.split('T');
+    if (datePart) drpEnd = parseDate(datePart);
+    if (timePart) document.getElementById('drp-end-time').value = timePart.slice(0,5);
+  }
+  if (drpStart) {
+    drpBaseMonth = drpStart.getMonth();
+    drpBaseYear = drpStart.getFullYear();
+  }
+  renderDRP();
+  if (drpStart && drpEnd) updateHiddenFields();
+
+  // Restore selected items
+  for (const id of (rd.items || [])) selectedItems.add(id);
+
+  // Pre-fill customer fields
+  if (rd.name)   document.querySelector('[name=customer_name]').value = rd.name;
+  if (rd.phone)  document.querySelector('[name=customer_phone]').value = rd.phone;
+  if (rd.email)  document.querySelector('[name=customer_email]').value = rd.email;
+  if (rd.notes)  document.querySelector('[name=notes]').value = rd.notes;
+  if (rd.payment_status) document.querySelector('[name=payment_status]').value = rd.payment_status;
+  if (rd.payment_amount) document.getElementById('payment-amount').value = rd.payment_amount;
+  if (rd.waiver) document.querySelector('[name=waiver_signed]').checked = true;
+
+  // Jump directly to Step 3 so staff see the errors in context
+  goStep(3);
+  // Scroll flash messages into view
+  setTimeout(() => {
+    const flash = document.querySelector('.flash-messages');
+    if (flash) flash.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 150);
+})();
 </script>
 {% endblock %}

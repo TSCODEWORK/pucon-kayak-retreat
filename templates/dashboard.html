@@ -198,7 +198,7 @@
             </td>
             <td style="text-align:center;padding:.7rem .75rem">
               {% if day.count > 0 %}
-                <a href="{{ url_for('reservations') }}" class="text-sm" style="color:var(--brand-600)">{{ day.count }} reservation{{ 's' if day.count != 1 }}</a>
+                <a href="{{ url_for('reservations', date=day.date.strftime('%Y-%m-%d')) }}" class="text-sm" style="color:var(--brand-dark)">{{ day.count }} reservation{{ 's' if day.count != 1 }}</a>
               {% else %}
                 <span class="text-muted text-sm">Quiet</span>
               {% endif %}
@@ -265,27 +265,31 @@
         {% elif d.count <= 3 %}{% set intensity = 'var(--teal-200,#99f6e4)' %}
         {% else %}{% set intensity = 'var(--teal-400,#2dd4bf)' %}
         {% endif %}
-        <div style="
+        {% set cell_url = url_for('reservations', date=d.date.strftime('%Y-%m-%d')) if d.count > 0 else '' %}
+        <{% if cell_url %}a href="{{ cell_url }}"{% else %}div{% endif %} style="
+          display:block;
           text-align:center;
           padding:.4rem .2rem;
           border-radius:var(--radius-sm);
-          border:1px solid {% if d.is_today %}var(--brand-600){% else %}var(--border){% endif %};
+          border:1px solid {% if d.is_today %}var(--brand-dark){% else %}var(--border){% endif %};
           background:{{ intensity if d.count > 0 else ('var(--slate-50)' if not d.is_past else 'transparent') }};
           font-size:.8rem;
+          text-decoration:none;
+          {% if d.count > 0 %}cursor:pointer;{% endif %}
           {% if d.is_today %}font-weight:700;{% endif %}
           {% if d.is_past and not d.is_today %}opacity:.65;{% endif %}
         ">
-          <div style="color:{% if d.is_today %}var(--brand-600){% else %}var(--text-primary){% endif %}">{{ d.day_num }}</div>
+          <div style="color:{% if d.is_today %}var(--brand-dark){% else %}var(--text){% endif %}">{{ d.day_num }}</div>
           {% if d.count > 0 %}
             <div style="font-size:.65rem;color:var(--teal-700,#0f766e);font-weight:600;margin-top:.1rem">{{ d.count }}</div>
           {% endif %}
-        </div>
+        </{% if cell_url %}a{% else %}div{% endif %}>
       {% endfor %}
     </div>
-    <div style="margin-top:.75rem;display:flex;gap:1rem;font-size:.75rem;color:var(--text-muted)">
-      <span>■ <span style="color:var(--teal-100)">■</span> 1 reservation</span>
-      <span><span style="color:var(--teal-200)">■</span> 2–3</span>
-      <span><span style="color:var(--teal-400)">■</span> 4+</span>
+    <div style="margin-top:.75rem;display:flex;gap:1rem;font-size:.75rem;color:var(--text-muted);align-items:center">
+      <span style="display:inline-flex;align-items:center;gap:.3rem"><span style="width:12px;height:12px;border-radius:2px;background:var(--teal-100,#ccfbf1);border:1px solid var(--border);display:inline-block"></span> 1 reservation</span>
+      <span style="display:inline-flex;align-items:center;gap:.3rem"><span style="width:12px;height:12px;border-radius:2px;background:var(--teal-200,#99f6e4);border:1px solid var(--border);display:inline-block"></span> 2–3</span>
+      <span style="display:inline-flex;align-items:center;gap:.3rem"><span style="width:12px;height:12px;border-radius:2px;background:var(--teal-400,#2dd4bf);display:inline-block"></span> 4+</span>
     </div>
   </div>
 </div>

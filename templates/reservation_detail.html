@@ -39,6 +39,8 @@
   line-height: 1.1;
   margin-bottom: .35rem;
   position: relative;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .res-hero-meta {
   display: flex;
@@ -168,7 +170,7 @@
 }
 .res-row-value {
   font-size: .9rem;
-  color: var(--text-primary);
+  color: var(--text);
   font-weight: 500;
 }
 
@@ -191,7 +193,7 @@
   font-family: 'Montserrat', sans-serif;
   font-size: 1.05rem;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--text);
   line-height: 1.2;
 }
 .date-col-time {
@@ -366,28 +368,17 @@
 <div class="action-bar">
   <span class="action-bar-label">Actions</span>
 
+  {% set item_count = reserved_items | length %}
   {% if st == 'Upcoming' %}
     <form method="POST" style="display:inline"
-      onsubmit="return confirm('Check out {{ cname | e }}? Items will be marked Rented.')">
+      onsubmit="return confirm('Check out {{ item_count }} item{{ 's' if item_count != 1 }} for {{ cname | e }}? Items will be marked Rented.')">
       <input type="hidden" name="action" value="update_status">
       <input type="hidden" name="status" value="Checked Out">
       <button type="submit" class="btn btn-warning">✓ Check Out</button>
     </form>
-    <form method="POST" style="display:inline"
-      onsubmit="return confirm('Cancel this reservation?')">
-      <input type="hidden" name="action" value="update_status">
-      <input type="hidden" name="status" value="Canceled">
-      <button type="submit" class="btn btn-danger btn-sm">✕ Cancel</button>
-    </form>
 
   {% elif st == 'Checked Out' %}
     <button class="btn btn-success" onclick="openReturnModal()">✓ Mark Returned</button>
-    <form method="POST" style="display:inline"
-      onsubmit="return confirm('Cancel? Items will be set back to Available.')">
-      <input type="hidden" name="action" value="update_status">
-      <input type="hidden" name="status" value="Canceled">
-      <button type="submit" class="btn btn-danger btn-sm">✕ Cancel</button>
-    </form>
 
   {% elif st == 'Returned' %}
     <span style="color:var(--green-600);font-weight:600;font-size:.9rem">✓ Rental complete</span>
@@ -399,6 +390,14 @@
   {% if st not in ('Returned','Canceled') %}
     <button class="btn btn-ghost btn-sm" style="margin-left:auto"
       onclick="toggleEdit()">✏️ Edit Details</button>
+    <!-- Cancel is separated visually to reduce mis-tap risk (#15) -->
+    <span style="width:1px;background:var(--border);align-self:stretch;margin:0 .25rem"></span>
+    <form method="POST" style="display:inline"
+      onsubmit="return confirm('Cancel this reservation for {{ cname | e }}? This cannot be undone.')">
+      <input type="hidden" name="action" value="update_status">
+      <input type="hidden" name="status" value="Canceled">
+      <button type="submit" class="btn btn-danger btn-sm">✕ Cancel Reservation</button>
+    </form>
   {% endif %}
 </div>
 
@@ -603,7 +602,9 @@
             <div class="item-select-grid">
               {% for item in inventory %}
                 {% set is_checked = item['Item ID']|string in item_ids %}
-                {% set unavailable = item.Status == 'Maintenance' and not is_checked %}
+                {# Block: Maintenance always, or Rented by a DIFFERENT reservation (#2) #}
+                {% set rented_elsewhere = item.Status == 'Rented' and not is_checked %}
+                {% set unavailable = (item.Status == 'Maintenance' or rented_elsewhere) and not is_checked %}
                 <label class="item-select-card {% if unavailable %}unavailable{% endif %}">
                   <input type="checkbox" name="item_ids" value="{{ item['Item ID'] }}"
                     {% if is_checked %}checked{% endif %}
@@ -613,6 +614,7 @@
                     <div class="item-meta">{{ item['Item ID'] }} · {{ item.get('Category','') }}</div>
                     <div class="item-meta" style="margin-top:.1rem">
                       <span class="badge badge-{{ item.Status.lower() }}" style="font-size:.65rem">{{ item.Status }}</span>
+                      {% if rented_elsewhere %}<span style="font-size:.65rem;color:var(--red-600);margin-left:.3rem">⚠ Rented elsewhere</span>{% endif %}
                     </div>
                   </div>
                 </label>
@@ -690,7 +692,11 @@
       </div>
       {% if reservation.get('Payment Amount') %}
       <div class="payment-total">
-        <span class="payment-total-label">Total</span>
+        <span class="payment-total-label">Total
+          {% if '% extended rental discount applied' in reservation.get('Notes','') %}
+            <span style="display:block;font-size:.7rem;font-weight:600;color:var(--green-600);margin-top:.1rem">✓ Discount applied</span>
+          {% endif %}
+        </span>
         <span class="payment-total-amount">{{ reservation.get('Payment Amount') | fmt_currency }}</span>
       </div>
       {% endif %}
@@ -733,7 +739,7 @@
       <div class="sidebar-card-header">🛶 Gear Status</div>
       {% for item in reserved_items %}
         <div style="padding:.65rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:.5rem">
-          <div style="font-size:.82rem;font-weight:500;color:var(--text-primary)">{{ item.get('Name/Description', item.get('Item ID')) }}</div>
+          <div style="font-size:.82rem;font-weight:500;color:var(--text)">{{ item.get('Name/Description', item.get('Item ID')) }}</div>
           <span class="badge badge-{{ item.get('Status','').lower() }}" style="flex-shrink:0;font-size:.65rem">{{ item.get('Status') }}</span>
         </div>
       {% endfor %}

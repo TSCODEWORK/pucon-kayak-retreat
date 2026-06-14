@@ -1,25 +1,27 @@
 import os
+import re
 import sys
 import uuid
 import json
 import math
+import logging
+import calendar as cal_module
 import functools
 import threading
 import time
 import urllib.request
 from pathlib import Path
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from flask import (
     Flask, render_template, request, redirect, url_for,
     session, flash, jsonify,
 )
 from dotenv import load_dotenv
 from db import DatabaseClient, DatabaseError, _parse_dt
-from sheets import SheetsClient
+from sheets import SheetsClient, SheetsError
 from sync import SheetsSyncer
 
-# Treat DatabaseError the same as SheetsError throughout
-SheetsError = DatabaseError
+log = logging.getLogger(__name__)
 
 # ── Resolve base directory (handles PyInstaller bundle) ───────────────────────
 # main.py sets PKR_BASE_DIR before importing this module when running bundled.
@@ -40,9 +42,19 @@ app.config["PERMANENT_SESSION_LIFETIME"] = 60 * 60 * 12  # 12 hours
 
 db = DatabaseClient()
 
+# Categories that qualify for the extended-rental discount (#33 — deduplicated + normalised)
 KAYAK_CATEGORIES = {
-    'Dagger','Jackson Kayak','Waka','Spade','Pyranha','Liquid Logic',
-    'Perception','Liquidlogic','Pyranha','Dagger Kayak',
+    'Dagger', 'Dagger Kayak', 'Jackson Kayak', 'Waka', 'Spade',
+    'Pyranha', 'Liquid Logic', 'Liquidlogic', 'Perception',
+}
+
+# State-machine constants (module-level so they're readable and not rebuilt per-request)
+VALID_STATUSES = {"Upcoming", "Checked Out", "Returned", "Canceled"}
+VALID_TRANSITIONS = {
+    "Upcoming":    {"Checked Out", "Canceled"},
+    "Checked Out": {"Returned", "Canceled"},
+    "Returned":    set(),   # terminal
+    "Canceled":    set(),   # terminal
 }
 
 def _fetch_clp_rate() -> float:
@@ -58,10 +70,15 @@ def _fetch_clp_rate() -> float:
         stored = db.get_settings().get("exchange_rate_usd_clp", "")
         return float(stored) if stored else 950.0
 
-def _get_clp_rate():
+def _get_clp_rate() -> float:
+    """Return stored USD→CLP rate, defaulting to 950 if missing or zero (#10)."""
     settings = db.get_settings()
     stored = settings.get("exchange_rate_usd_clp", "")
-    return float(stored) if stored else 950.0
+    try:
+        rate = float(stored)
+        return rate if rate > 0 else 950.0
+    except (TypeError, ValueError):
+        return 950.0
 
 def get_display_currency():
     """Returns 'USD' or 'CLP' based on session preference."""
@@ -106,9 +123,7 @@ def _background_pull_loop():
 
 
 _pull_thread = threading.Thread(target=_background_pull_loop, daemon=True)
-_pull_thread.start()
-
-log = __import__("logging").getLogger(__name__)
+_pull_thread.start()  # log is now defined at module top — no ordering issue (#5)
 
 
 def _sync():
@@ -163,9 +178,6 @@ def logout():
 @app.route("/")
 @login_required
 def dashboard():
-    from datetime import timedelta, date as date_type
-    import calendar
-
     view = request.args.get("view", "day")
     sheets_error = None
     today = date.today()
@@ -246,7 +258,7 @@ def dashboard():
         # Month view
         if view == "month":
             year, month = today.year, today.month
-            _, days_in_month = calendar.monthrange(year, month)
+            _, days_in_month = cal_module.monthrange(year, month)
             month_start = date_type(year, month, 1)
             month_end = date_type(year, month, days_in_month)
 
@@ -506,14 +518,7 @@ def reservation_detail(res_id):
                 new_status = request.form.get("status")
                 current_status = reservation.get("Reservation Status", "")
 
-                # Allowlist + state-machine guard
-                VALID_STATUSES = {"Upcoming", "Checked Out", "Returned", "Canceled"}
-                VALID_TRANSITIONS = {
-                    "Upcoming":    {"Checked Out", "Canceled"},
-                    "Checked Out": {"Returned", "Canceled"},
-                    "Returned":    set(),   # terminal
-                    "Canceled":    set(),   # terminal
-                }
+                # Allowlist + state-machine guard (constants defined at module level)
                 if new_status not in VALID_STATUSES:
                     flash(f"Invalid status '{new_status}'.", "error")
                     return redirect(url_for("reservation_detail", res_id=res_id))
@@ -602,9 +607,12 @@ def reservation_detail(res_id):
 
             return redirect(url_for("reservation_detail", res_id=res_id))
 
-        # Reload after any updates
+        # Reload after any updates — guard against None if a Sheets pull raced us (#1)
         all_res = db.get_reservations(force_refresh=True)
         reservation = next((r for r in all_res if str(r.get("Reservation ID")) == res_id), None)
+        if not reservation:
+            flash("Reservation no longer found — it may have been removed.", "error")
+            return redirect(url_for("reservations"))
         item_ids = [i.strip() for i in str(reservation.get("Item IDs", "")).split(",") if i.strip()]
         reserved_items = [i for i in inventory if str(i.get("Item ID")) in item_ids]
 
@@ -745,13 +753,13 @@ def update_inventory(item_id):
     try:
         updates = {}
         status = request.form.get("status")
-        condition_notes = request.form.get("condition_notes")
-        quantity = request.form.get("quantity")
-        if status:
+        # Allowlist status values (#20)
+        if status and status in {"Available", "Rented", "Maintenance"}:
             updates["Status"] = status
-        # Only overwrite notes if the user explicitly typed something
-        if condition_notes:
-            updates["Condition Notes"] = condition_notes
+        # Use key-presence check (not truthiness) so notes can be cleared to "" (#19)
+        if "condition_notes" in request.form:
+            updates["Condition Notes"] = request.form.get("condition_notes", "")
+        quantity = request.form.get("quantity")
         if quantity:
             updates["Quantity"] = quantity
         if updates:
@@ -939,9 +947,13 @@ def settings_view():
                 flash(f"Rates applied to {count} item(s).", "success")
 
         elif action == "change_pin":
+            global APP_PIN
+            current_pin_input = request.form.get("current_pin", "").strip()
             new_pin = request.form.get("new_pin", "").strip()
             confirm_pin = request.form.get("confirm_pin", "").strip()
-            if not new_pin:
+            if not current_pin_input or current_pin_input != APP_PIN:
+                flash("Current PIN is incorrect.", "error")  # (#8)
+            elif not new_pin:
                 flash("PIN cannot be empty.", "error")
             elif new_pin != confirm_pin:
                 flash("PINs do not match.", "error")
@@ -949,7 +961,6 @@ def settings_view():
                 flash("PIN must be at least 4 characters.", "error")
             else:
                 db.update_settings({"app_pin": new_pin})
-                global APP_PIN
                 APP_PIN = new_pin
                 flash("PIN updated. Use the new PIN next time you sign in.", "success")
 
@@ -961,7 +972,6 @@ def settings_view():
             flash("General settings saved.", "success")
 
         elif action == "update_sheet_url":
-            import re
             raw_url = request.form.get("sheet_url", "").strip()
             # Accept full editor URL or bare sheet ID
             match = re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", raw_url)
@@ -997,8 +1007,8 @@ def settings_view():
         except Exception:
             last_synced_label = last_synced
     sheet_id = settings.get("sheet_id", "")
-    exchange_rate = db.get_settings().get("exchange_rate_usd_clp", "950")
-    exchange_rate_updated = db.get_settings().get("exchange_rate_updated", "")
+    exchange_rate = settings.get("exchange_rate_usd_clp", "950")
+    exchange_rate_updated = settings.get("exchange_rate_updated", "")
     return render_template(
         "settings.html",
         settings=settings,
@@ -1116,9 +1126,15 @@ app.jinja_env.globals["get_clp_rate"] = _get_clp_rate
 
 
 @app.route("/api/toggle-currency", methods=["POST"])
+@login_required  # (#7)
 def toggle_currency():
-    current = get_display_currency()
-    session["display_currency"] = "CLP" if current == "USD" else "USD"
+    # Allow explicit target via form field; fall back to toggle
+    target = request.form.get("currency")
+    if target in ("USD", "CLP"):
+        session["display_currency"] = target
+    else:
+        current = get_display_currency()
+        session["display_currency"] = "CLP" if current == "USD" else "USD"
     return redirect(request.referrer or url_for("dashboard"))
 
 
@@ -1127,7 +1143,6 @@ def toggle_currency():
 def refresh_rate():
     try:
         rate = _fetch_clp_rate()
-        from datetime import datetime
         db.update_settings({
             "exchange_rate_usd_clp": str(rate),
             "exchange_rate_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),

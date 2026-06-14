@@ -36,7 +36,7 @@
   font-family: 'Montserrat', sans-serif;
   font-size: 1.05rem;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--text);
   line-height: 1.2;
 }
 .res-card-sub {
@@ -76,7 +76,7 @@
 .res-card-field-value {
   font-size: .85rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text);
   line-height: 1.3;
 }
 .res-card-field-value.muted {
@@ -165,16 +165,11 @@
 
 <!-- Search / filter bar -->
 <form method="GET" class="filter-bar" style="margin-bottom:1.4rem">
+  {% if status_filter %}<input type="hidden" name="status" value="{{ status_filter }}">{% endif %}
   <input class="form-control search-input" type="search" name="q"
-    placeholder="Search by name, email, phone, ID, kayak…" value="{{ q }}" style="flex:1;min-width:180px">
-  <select class="form-control" name="status" style="max-width:180px">
-    <option value="">All statuses</option>
-    {% for s in ['Upcoming','Checked Out','Returned','Canceled'] %}
-      <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s }}</option>
-    {% endfor %}
-  </select>
+    placeholder="Search by name, email, phone, ID, or item…" value="{{ q }}" style="flex:1;min-width:180px">
   <input class="form-control" type="date" name="date" value="{{ date_filter }}" style="max-width:175px">
-  <button type="submit" class="btn btn-primary">Filter</button>
+  <button type="submit" class="btn btn-primary">Search</button>
   {% if q or status_filter or date_filter %}
     <a href="{{ url_for('reservations') }}" class="btn btn-ghost">Clear</a>
   {% endif %}
@@ -185,6 +180,7 @@
   {% for r in reservations %}
     {% set st = r.get('Reservation Status','') %}
     {% set ps = r.get('Payment Status','') %}
+
     <a href="{{ url_for('reservation_detail', res_id=r['Reservation ID']) }}"
       class="res-card {{ st.lower().replace(' ','-') }}">
 
@@ -251,9 +247,15 @@
 {% else %}
   <div class="card">
     <div class="empty-state" style="padding:3rem">
-      No reservations found.
-      <br><br>
-      <a href="{{ url_for('new_reservation') }}" class="btn btn-primary">+ Create First Booking</a>
+      {% if q or status_filter or date_filter %}
+        📭 No reservations match your current filters.
+        <br><br>
+        <a href="{{ url_for('reservations') }}" class="btn btn-ghost">Clear filters</a>
+      {% else %}
+        No reservations yet.
+        <br><br>
+        <a href="{{ url_for('new_reservation') }}" class="btn btn-primary">+ Create First Booking</a>
+      {% endif %}
     </div>
   </div>
 {% endif %}

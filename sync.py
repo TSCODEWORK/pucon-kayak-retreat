@@ -105,25 +105,40 @@ class SheetsSyncer:
         inv_pulled = 0
         res_pulled = 0
         try:
-            # Pull inventory
+            # Pull inventory — skip rows with empty/whitespace Item ID (#4)
             try:
                 ws = self._sheets._get_ws("Inventory")
                 rows = ws.get_all_records()
                 for row in rows:
-                    if row.get("Item ID"):
-                        db_client.add_inventory_item(row)
-                        inv_pulled += 1
+                    item_id = str(row.get("Item ID", "")).strip()
+                    if not item_id:
+                        log.debug("Skipping inventory row with empty Item ID during pull")
+                        continue
+                    # Skip rows that are suspiciously empty (only ID populated)
+                    non_empty = sum(1 for v in row.values() if str(v).strip())
+                    if non_empty < 2:
+                        log.debug("Skipping near-empty inventory row: %s", item_id)
+                        continue
+                    db_client.add_inventory_item(row)
+                    inv_pulled += 1
             except SheetsError:
                 pass  # Tab may not exist yet
 
-            # Pull reservations
+            # Pull reservations — same guards (#4)
             try:
                 ws = self._sheets._get_ws("Reservations")
                 rows = ws.get_all_records()
                 for row in rows:
-                    if row.get("Reservation ID"):
-                        db_client.add_reservation(row)
-                        res_pulled += 1
+                    res_id = str(row.get("Reservation ID", "")).strip()
+                    if not res_id:
+                        log.debug("Skipping reservation row with empty Reservation ID during pull")
+                        continue
+                    non_empty = sum(1 for v in row.values() if str(v).strip())
+                    if non_empty < 3:
+                        log.debug("Skipping near-empty reservation row: %s", res_id)
+                        continue
+                    db_client.add_reservation(row)
+                    res_pulled += 1
             except SheetsError:
                 pass
 
