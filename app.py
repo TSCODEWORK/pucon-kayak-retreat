@@ -782,6 +782,15 @@ def update_inventory(item_id):
         quantity = request.form.get("quantity")
         if quantity:
             updates["Quantity"] = quantity
+        # Per-item rates — allow blank to clear a rate
+        for field, col in [
+            ("hourly_rate",    "Hourly Rate"),
+            ("half_day_rate",  "Half-Day Rate"),
+            ("full_day_rate",  "Full-Day Rate"),
+            ("multi_day_rate", "Multi-Day Rate"),
+        ]:
+            if field in request.form:
+                updates[col] = request.form.get(field, "").strip()
         if updates:
             db.update_inventory_item(item_id, updates)
             _sync()

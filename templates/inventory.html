@@ -218,21 +218,30 @@
           </div>
         {% endif %}
 
+        {# Shared JS args for all three modal buttons on this card #}
+        {% set _id  = item['Item ID'] | replace("'","\\'") %}
+        {% set _sts = item.get('Status','') | replace("'","\\'") %}
+        {% set _nts = item.get('Condition Notes','') | replace("'","\\'") %}
+        {% set _qty = item.get('Quantity','1') %}
+        {% set _hr  = item.get('Hourly Rate','') %}
+        {% set _hd  = item.get('Half-Day Rate','') %}
+        {% set _fd  = item.get('Full-Day Rate','') %}
+        {% set _md  = item.get('Multi-Day Rate','') %}
         <div class="inv-actions">
           {% if item.get('Status') != 'Maintenance' %}
             <button class="btn btn-warning btn-sm"
-              onclick="openInvModal('{{ item['Item ID'] | replace("'","\\'") }}','Maintenance','{{ item.get('Condition Notes','') | replace("'","\\'") }}','{{ item.get('Quantity','1') }}')">
+              onclick="openInvModal('{{ _id }}','Maintenance','{{ _nts }}','{{ _qty }}','{{ _hr }}','{{ _hd }}','{{ _fd }}','{{ _md }}')">
               Maintenance
             </button>
           {% else %}
             <button class="btn btn-success btn-sm"
-              onclick="openInvModal('{{ item['Item ID'] | replace("'","\\'") }}','Available','{{ item.get('Condition Notes','') | replace("'","\\'") }}','{{ item.get('Quantity','1') }}')">
+              onclick="openInvModal('{{ _id }}','Available','{{ _nts }}','{{ _qty }}','{{ _hr }}','{{ _hd }}','{{ _fd }}','{{ _md }}')">
               Set Available
             </button>
           {% endif %}
           <button class="btn btn-ghost btn-sm"
-            onclick="openInvModal('{{ item['Item ID'] | replace("'","\\'") }}','{{ item.get('Status','') | replace("'","\\'") }}','{{ item.get('Condition Notes','') | replace("'","\\'") }}','{{ item.get('Quantity','1') }}')">
-            Edit Notes
+            onclick="openInvModal('{{ _id }}','{{ _sts }}','{{ _nts }}','{{ _qty }}','{{ _hr }}','{{ _hd }}','{{ _fd }}','{{ _md }}')">
+            Edit
           </button>
           <form method="POST" action="{{ url_for('delete_inventory', item_id=item['Item ID']) }}" style="display:inline"
             onsubmit="return confirm('Remove {{ item['Item ID'] | replace("'","\\'") }} from inventory? This cannot be undone.')">
@@ -257,33 +266,62 @@
   </div>
 {% endif %}
 
-<!-- ── Status edit modal ── -->
+<!-- ── Status / rates edit modal ── -->
 <div id="inv-overlay" class="modal-overlay hidden" onclick="closeInvModal()"></div>
-<div id="inv-modal" class="modal-box hidden">
-  <h3>Edit Item — <span id="inv-modal-id"></span></h3>
+<div id="inv-modal" class="modal-box hidden" style="max-width:480px">
+  <h3 style="margin-bottom:1.1rem">Edit Item — <span id="inv-modal-id"></span></h3>
   <form method="POST" id="inv-modal-action">
     <input type="hidden" name="item_id" id="inv-form-id">
-    <div class="form-group" style="margin-bottom:1rem">
-      <label class="form-label">Status</label>
-      <select class="form-control" name="status" id="inv-status-select">
-        <option value="Available">Available</option>
-        <option value="Rented">Rented</option>
-        <option value="Maintenance">Maintenance</option>
-      </select>
+
+    <!-- Status & quantity row -->
+    <div style="display:grid;grid-template-columns:1fr auto;gap:.75rem;margin-bottom:.9rem">
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <select class="form-control" name="status" id="inv-status-select">
+          <option value="Available">Available</option>
+          <option value="Rented">Rented</option>
+          <option value="Maintenance">Maintenance</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Quantity</label>
+        <input class="form-control" type="number" name="quantity" id="inv-qty-input" min="1" step="1"
+          placeholder="1" style="width:80px">
+      </div>
     </div>
-    <div class="form-group" style="margin-bottom:.85rem">
-      <label class="form-label">Quantity</label>
-      <input class="form-control" type="number" name="quantity" id="inv-qty-input" min="1" step="1"
-        placeholder="1" style="max-width:90px">
+
+    <!-- Rental rates -->
+    <div style="margin-bottom:.9rem">
+      <div class="form-section-title" style="margin-bottom:.5rem">Rental Rates (USD)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+        <div class="form-group">
+          <label class="form-label">Hourly ($)</label>
+          <input class="form-control" type="number" name="hourly_rate" id="inv-hourly" min="0" step="0.01" placeholder="—">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Half-Day ($)</label>
+          <input class="form-control" type="number" name="half_day_rate" id="inv-halfday" min="0" step="0.01" placeholder="—">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Full-Day ($)</label>
+          <input class="form-control" type="number" name="full_day_rate" id="inv-fullday" min="0" step="0.01" placeholder="—">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Multi-Day / Day ($)</label>
+          <input class="form-control" type="number" name="multi_day_rate" id="inv-multiday" min="0" step="0.01" placeholder="—">
+        </div>
+      </div>
     </div>
+
+    <!-- Condition notes -->
     <div class="form-group" style="margin-bottom:1.25rem">
       <label class="form-label">Condition Notes</label>
-      <textarea class="form-control" name="condition_notes" id="inv-notes-input" rows="3"
+      <textarea class="form-control" name="condition_notes" id="inv-notes-input" rows="2"
         placeholder="Current condition, damage, missing parts…"></textarea>
     </div>
+
     <div class="btn-group">
-      <button type="submit" class="btn btn-primary"
-        onclick="return confirm('Save changes to this item?')">Save</button>
+      <button type="submit" class="btn btn-primary">Save Changes</button>
       <button type="button" class="btn btn-ghost" onclick="closeInvModal()">Cancel</button>
     </div>
   </form>
@@ -293,13 +331,17 @@
 
 {% block scripts %}
 <script>
-function openInvModal(itemId, status, notes, qty) {
+function openInvModal(itemId, status, notes, qty, hourly, halfday, fullday, multiday) {
   document.getElementById('inv-modal-id').textContent = itemId;
   document.getElementById('inv-form-id').value = itemId;
   document.getElementById('inv-modal-action').action = '/inventory/' + encodeURIComponent(itemId) + '/update';
   document.getElementById('inv-status-select').value = status;
   document.getElementById('inv-notes-input').value = notes || '';
   document.getElementById('inv-qty-input').value = qty || 1;
+  document.getElementById('inv-hourly').value  = hourly   || '';
+  document.getElementById('inv-halfday').value = halfday  || '';
+  document.getElementById('inv-fullday').value = fullday  || '';
+  document.getElementById('inv-multiday').value = multiday || '';
   document.getElementById('inv-overlay').classList.remove('hidden');
   document.getElementById('inv-modal').classList.remove('hidden');
 }
