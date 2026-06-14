@@ -9,6 +9,7 @@
   </div>
   <div class="btn-group">
     <button class="btn btn-ghost btn-sm" onclick="toggleSizingGuide()">📏 Sizing Guide</button>
+    <button class="btn btn-ghost btn-sm" onclick="toggleImportPanel()">⬆ Import</button>
     <button class="btn btn-primary" onclick="toggleAddForm()">+ Add Equipment</button>
   </div>
 </div>
@@ -51,6 +52,60 @@
         </div>
         {% endif %}
       {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- ── Import panel ── -->
+<div id="import-panel" class="hidden" style="margin-bottom:1.1rem">
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h3>Import Inventory from Spreadsheet</h3>
+        <div class="text-sm text-muted">Copy rows from Google Sheets, Excel, or Numbers and paste below</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="toggleImportPanel()">✕ Close</button>
+    </div>
+    <div class="card-body">
+
+      <!-- Column reference -->
+      <div style="background:var(--slate-50);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.75rem 1rem;margin-bottom:1rem;font-size:.82rem">
+        <div style="font-weight:700;margin-bottom:.35rem;color:var(--text)">Recognised column headers (any order, case-insensitive):</div>
+        <div style="display:flex;flex-wrap:wrap;gap:.3rem">
+          {% for col in ['Item ID','Category','Name/Description','Size','Status','Condition Notes','Hourly Rate','Half-Day Rate','Full-Day Rate','Multi-Day Rate','Quantity'] %}
+            <code style="background:#fff;border:1px solid var(--border);border-radius:4px;padding:.1rem .4rem;font-size:.78rem">{{ col }}</code>
+          {% endfor %}
+        </div>
+        <div style="margin-top:.5rem;color:var(--text-muted)">
+          <strong>Item ID</strong> is required. All other columns are optional — existing items are updated if the ID already exists.
+          Rates should be in <strong>{{ get_rate_currency() }}</strong>.
+          <a href="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms/copy"
+             target="_blank" style="color:var(--brand);text-decoration:none;font-weight:600">
+            📋 Copy the template sheet →
+          </a>
+        </div>
+      </div>
+
+      <form method="POST" action="{{ url_for('import_inventory') }}">
+        <div class="form-group" style="margin-bottom:.85rem">
+          <label class="form-label">Paste spreadsheet data here</label>
+          <textarea class="form-control" name="paste_data" id="import-textarea" rows="8"
+            placeholder="Item ID&#9;Category&#9;Name/Description&#9;Size&#9;Full-Day Rate&#9;Multi-Day Rate
+Dagger - Code M (1)&#9;Dagger&#9;Dagger Code M&#9;M&#9;30000&#9;30000
+Dagger - Code M (2)&#9;Dagger&#9;Dagger Code M&#9;M&#9;30000&#9;30000"
+            style="font-family:monospace;font-size:.78rem;resize:vertical"></textarea>
+        </div>
+        <div class="btn-group">
+          <button type="submit" class="btn btn-primary"
+            onclick="return document.getElementById('import-textarea').value.trim() !== '' || (alert('Nothing pasted yet.'), false)">
+            Import
+          </button>
+          <button type="button" class="btn btn-ghost" onclick="toggleImportPanel()">Cancel</button>
+          <span class="text-xs text-muted" style="align-self:center;margin-left:.5rem">
+            Existing items are updated, new ones are added — nothing is deleted.
+          </span>
+        </div>
+      </form>
     </div>
   </div>
 </div>
@@ -366,6 +421,14 @@ function toggleAddForm(category) {
 }
 function toggleSizingGuide() {
   document.getElementById('sizing-guide').classList.toggle('hidden');
+}
+function toggleImportPanel() {
+  const panel = document.getElementById('import-panel');
+  panel.classList.toggle('hidden');
+  if (!panel.classList.contains('hidden')) {
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById('import-textarea').focus();
+  }
 }
 </script>
 {% endblock %}

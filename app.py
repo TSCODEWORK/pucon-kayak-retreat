@@ -781,6 +781,122 @@ def delete_inventory(item_id):
     return redirect(url_for("inventory_view"))
 
 
+@app.route("/inventory/import", methods=["POST"])
+@login_required
+def import_inventory():
+    """Bulk-import inventory from pasted spreadsheet data (tab-separated or CSV).
+
+    The first row must be a header row. Column names are matched case-insensitively
+    against our canonical names plus common aliases, so data pasted straight from
+    Google Sheets, Excel, or Numbers works without any reformatting.
+    """
+    raw = request.form.get("paste_data", "").strip()
+    if not raw:
+        flash("No data pasted — nothing to import.", "error")
+        return redirect(url_for("inventory_view"))
+
+    # Detect delimiter: tab (spreadsheet copy) or comma (CSV)
+    lines = raw.splitlines()
+    delimiter = "\t" if "\t" in lines[0] else ","
+
+    import csv, io
+    reader = csv.DictReader(io.StringIO(raw), delimiter=delimiter)
+
+    # Flexible column aliases → canonical DB column
+    ALIASES = {
+        # Item ID
+        "item id": "Item ID", "id": "Item ID", "combined label": "Item ID",
+        "item": "Item ID", "sku": "Item ID",
+        # Category
+        "category": "Category", "brand": "Category", "type": "Category",
+        "category / brand": "Category", "category/brand": "Category",
+        # Name
+        "name/description": "Name/Description", "name": "Name/Description",
+        "description": "Name/Description", "full model": "Name/Description",
+        "model": "Name/Description", "item name": "Name/Description",
+        # Size
+        "size": "Size",
+        # Status
+        "status": "Status",
+        # Condition Notes
+        "condition notes": "Condition Notes", "notes": "Condition Notes",
+        "condition": "Condition Notes",
+        # Rates
+        "hourly rate": "Hourly Rate", "hourly": "Hourly Rate",
+        "half-day rate": "Half-Day Rate", "half day rate": "Half-Day Rate",
+        "half day": "Half-Day Rate", "halfday": "Half-Day Rate",
+        "full-day rate": "Full-Day Rate", "full day rate": "Full-Day Rate",
+        "full day": "Full-Day Rate", "fullday": "Full-Day Rate", "daily rate": "Full-Day Rate",
+        "multi-day rate": "Multi-Day Rate", "multi day rate": "Multi-Day Rate",
+        "multi day": "Multi-Day Rate", "multiday": "Multi-Day Rate",
+        "multi-day / day": "Multi-Day Rate", "multi day / day": "Multi-Day Rate",
+        # Quantity
+        "quantity": "Quantity", "qty": "Quantity", "count": "Quantity",
+    }
+
+    imported = skipped = 0
+    errors = []
+    existing_ids = {str(i.get("Item ID")) for i in db.get_inventory()}
+
+    for row_num, row in enumerate(reader, start=2):
+        # Map incoming column names → canonical names
+        mapped = {}
+        for raw_col, value in row.items():
+            if raw_col is None:
+                continue
+            canonical = ALIASES.get(raw_col.strip().lower())
+            if canonical:
+                mapped[canonical] = (value or "").strip()
+
+        item_id = mapped.get("Item ID", "").strip()
+        if not item_id:
+            errors.append(f"Row {row_num}: skipped — no Item ID.")
+            skipped += 1
+            continue
+        if "," in item_id:
+            errors.append(f"Row {row_num}: skipped — Item ID '{item_id}' contains a comma.")
+            skipped += 1
+            continue
+
+        # Default Status if missing/blank
+        if not mapped.get("Status"):
+            mapped["Status"] = "Available"
+        # Default Name if missing
+        if not mapped.get("Name/Description"):
+            mapped["Name/Description"] = item_id
+        # Default Quantity
+        if not mapped.get("Quantity"):
+            mapped["Quantity"] = "1"
+
+        try:
+            if item_id in existing_ids:
+                # Update existing item with any provided fields
+                update_fields = {k: v for k, v in mapped.items() if k != "Item ID" and v != ""}
+                if update_fields:
+                    db.update_inventory_item(item_id, update_fields)
+                    imported += 1
+            else:
+                db.add_inventory_item(mapped)
+                existing_ids.add(item_id)
+                imported += 1
+        except Exception as e:
+            errors.append(f"Row {row_num} ({item_id}): {e}")
+            skipped += 1
+
+    if imported:
+        _sync()
+        flash(f"✓ Imported {imported} item{'s' if imported != 1 else ''}."
+              + (f" {skipped} skipped." if skipped else ""), "success")
+    else:
+        flash(f"Nothing imported. {skipped} row{'s' if skipped != 1 else ''} skipped.", "error")
+
+    if errors:
+        for err in errors[:5]:   # cap at 5 to avoid flooding
+            flash(err, "warning")
+
+    return redirect(url_for("inventory_view"))
+
+
 @app.route("/inventory/<item_id>/update", methods=["POST"])
 @login_required
 def update_inventory(item_id):
