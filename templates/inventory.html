@@ -7,9 +7,26 @@
     <h1>Inventory</h1>
     <div class="page-subtitle">{{ items | length }} item{{ 's' if items | length != 1 }} shown</div>
   </div>
-  <div class="btn-group">
+  <div class="btn-group" style="align-items:center">
     <button class="btn btn-ghost btn-sm" onclick="toggleSizingGuide()">📏 Sizing Guide</button>
     <button class="btn btn-ghost btn-sm" onclick="toggleImportPanel()">⬆ Import</button>
+    <!-- View toggle -->
+    <div id="view-toggle" style="display:inline-flex;border:1.5px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-left:.25rem">
+      <button id="btn-grid" onclick="setView('grid')" title="Grid view"
+        style="border:none;padding:.3rem .55rem;background:var(--brand);color:#fff;cursor:pointer;line-height:1;display:flex;align-items:center">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor">
+          <rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/>
+          <rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/>
+        </svg>
+      </button>
+      <button id="btn-list" onclick="setView('list')" title="List view"
+        style="border:none;border-left:1.5px solid var(--border);padding:.3rem .55rem;background:transparent;color:var(--text-muted);cursor:pointer;line-height:1;display:flex;align-items:center">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor">
+          <rect x="1" y="2" width="14" height="2" rx="1"/><rect x="1" y="7" width="14" height="2" rx="1"/>
+          <rect x="1" y="12" width="14" height="2" rx="1"/>
+        </svg>
+      </button>
+    </div>
     <button class="btn btn-primary" onclick="toggleAddForm()">+ Add Equipment</button>
   </div>
 </div>
@@ -239,7 +256,9 @@ Dagger - Code M (2)&#9;Dagger&#9;Dagger Code M&#9;M&#9;30000&#9;30000"
 
 <!-- ── Inventory cards ── -->
 {% if items %}
-  <div class="inventory-grid">
+
+  <!-- Grid view -->
+  <div class="inventory-grid" id="view-grid">
     {% for item in items %}
       <div class="inv-card">
         <div class="inv-card-header">
@@ -308,6 +327,65 @@ Dagger - Code M (2)&#9;Dagger&#9;Dagger Code M&#9;M&#9;30000&#9;30000"
         </div>
       </div>
     {% endfor %}
+  </div>
+
+  <!-- List view -->
+  <div id="view-list" style="display:none">
+    <table style="width:100%;border-collapse:collapse;font-size:.875rem">
+      <thead>
+        <tr style="border-bottom:2px solid var(--border);text-align:left">
+          <th style="padding:.5rem .75rem;color:var(--text-muted);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em">Item ID</th>
+          <th style="padding:.5rem .75rem;color:var(--text-muted);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em">Category</th>
+          <th style="padding:.5rem .75rem;color:var(--text-muted);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em">Description</th>
+          <th style="padding:.5rem .75rem;color:var(--text-muted);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em">Size</th>
+          <th style="padding:.5rem .75rem;color:var(--text-muted);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em">Status</th>
+          <th style="padding:.5rem .75rem;color:var(--text-muted);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em">Full-Day</th>
+          <th style="padding:.5rem .75rem;color:var(--text-muted);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em">Multi-Day</th>
+          <th style="padding:.5rem .75rem"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+          {% set _id  = item['Item ID'] | replace("'","\\'") %}
+          {% set _sts = item.get('Status','') | replace("'","\\'") %}
+          {% set _nts = item.get('Condition Notes','') | replace("'","\\'") %}
+          {% set _qty = item.get('Quantity','1') %}
+          {% set _hr  = item.get('Hourly Rate','') %}
+          {% set _hd  = item.get('Half-Day Rate','') %}
+          {% set _fd  = item.get('Full-Day Rate','') %}
+          {% set _md  = item.get('Multi-Day Rate','') %}
+          <tr style="border-bottom:1px solid var(--border);transition:background .1s" onmouseover="this.style.background='var(--slate-50)'" onmouseout="this.style.background=''">
+            <td style="padding:.55rem .75rem;font-weight:600;font-size:.8rem;color:var(--text-muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ item.get('Item ID','') }}">{{ item.get('Item ID','') }}</td>
+            <td style="padding:.55rem .75rem;white-space:nowrap">{{ item.get('Category','') }}</td>
+            <td style="padding:.55rem .75rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ item.get('Name/Description','') }}">{{ item.get('Name/Description','') }}</td>
+            <td style="padding:.55rem .75rem;text-align:center">
+              {% if item.get('Size') %}<span class="size-badge size-{{ item['Size'].lower() }}">{{ item['Size'] }}</span>{% else %}—{% endif %}
+            </td>
+            <td style="padding:.55rem .75rem;white-space:nowrap">
+              <span class="badge badge-{{ item.get('Status','available').lower() }}">{{ item.get('Status','Available') }}</span>
+            </td>
+            <td style="padding:.55rem .75rem;white-space:nowrap">
+              {% if item.get('Full-Day Rate') %}{{ item['Full-Day Rate'] | fmt_price(get_display_currency()) }}{% else %}—{% endif %}
+            </td>
+            <td style="padding:.55rem .75rem;white-space:nowrap">
+              {% if item.get('Multi-Day Rate') %}{{ item['Multi-Day Rate'] | fmt_price(get_display_currency()) }}{% else %}—{% endif %}
+            </td>
+            <td style="padding:.55rem .75rem;white-space:nowrap;text-align:right">
+              <div style="display:inline-flex;gap:.4rem">
+                <button class="btn btn-ghost btn-sm"
+                  onclick="openInvModal('{{ _id }}','{{ _sts }}','{{ _nts }}','{{ _qty }}','{{ _hr }}','{{ _hd }}','{{ _fd }}','{{ _md }}')">
+                  Edit
+                </button>
+                <form method="POST" action="{{ url_for('delete_inventory', item_id=item['Item ID']) }}" style="display:inline"
+                  onsubmit="return confirm('Remove {{ item['Item ID'] | replace(\"'\",\"\\\\'\")|replace('\"','&quot;') }}?')">
+                  <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 
 {% else %}
@@ -422,6 +500,31 @@ function toggleAddForm(category) {
 function toggleSizingGuide() {
   document.getElementById('sizing-guide').classList.toggle('hidden');
 }
+
+function setView(v) {
+  const grid = document.getElementById('view-grid');
+  const list = document.getElementById('view-list');
+  const btnG  = document.getElementById('btn-grid');
+  const btnL  = document.getElementById('btn-list');
+  if (!grid || !list) return;
+  const isGrid = v === 'grid';
+  grid.style.display = isGrid ? '' : 'none';
+  list.style.display = isGrid ? 'none' : '';
+  btnG.style.background = isGrid ? 'var(--brand)' : 'transparent';
+  btnG.style.color      = isGrid ? '#fff' : 'var(--text-muted)';
+  btnL.style.background = isGrid ? 'transparent' : 'var(--brand)';
+  btnL.style.color      = isGrid ? 'var(--text-muted)' : '#fff';
+  try { localStorage.setItem('inv_view', v); } catch(e) {}
+}
+
+// Restore last-used view preference
+(function() {
+  try {
+    const saved = localStorage.getItem('inv_view');
+    if (saved === 'list') setView('list');
+  } catch(e) {}
+})();
+
 function toggleImportPanel() {
   const panel = document.getElementById('import-panel');
   panel.classList.toggle('hidden');
