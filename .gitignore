@@ -28,3 +28,5 @@ dist/
 # IDE
 .vscode/
 .idea/
+client_secrets.json
+client_secret_*.json

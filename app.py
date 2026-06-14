@@ -24,6 +24,9 @@ from sync import SheetsSyncer
 
 log = logging.getLogger(__name__)
 
+# OAuth2 over HTTP is fine for localhost (Desktop app running on the user's machine)
+os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
+
 # ── Resolve base directory (handles PyInstaller bundle) ───────────────────────
 # main.py sets PKR_BASE_DIR before importing this module when running bundled.
 # Fallback: directory of this file (normal run).
@@ -1217,6 +1220,12 @@ def refresh_rate():
     return redirect(request.referrer or url_for("settings_view"))
 
 
+def _oauth_redirect_uri():
+    """Return the OAuth callback URI — always localhost so it matches Google's registered URI."""
+    port = request.environ.get("SERVER_PORT", "5000")
+    return f"http://localhost:{port}/oauth/callback"
+
+
 @app.route("/oauth/google")
 @login_required
 def oauth_google_start():
@@ -1226,8 +1235,8 @@ def oauth_google_start():
         secrets_path = str(_BASE / "client_secrets.json")
         if not os.path.exists(secrets_path):
             flash(
-                "client_secrets.json not found. Place the file in the app folder "
-                "and restart the app.",
+                "client_secrets.json not found in the app folder. "
+                "Please contact support.",
                 "error",
             )
             return redirect(url_for("settings_view"))
@@ -1235,12 +1244,12 @@ def oauth_google_start():
         flow = Flow.from_client_secrets_file(
             secrets_path,
             scopes=SCOPES,
-            redirect_uri=url_for("oauth_google_callback", _external=True),
+            redirect_uri=_oauth_redirect_uri(),
         )
         auth_url, state = flow.authorization_url(
             access_type="offline",
             include_granted_scopes="true",
-            prompt="consent",           # always ask so we get a refresh_token
+            prompt="consent",   # always ask so we always get a refresh_token
         )
         session["oauth_state"] = state
         return redirect(auth_url)
@@ -1256,15 +1265,14 @@ def oauth_google_callback():
     try:
         from google_auth_oauthlib.flow import Flow
         secrets_path = str(_BASE / "client_secrets.json")
+        redirect_uri = _oauth_redirect_uri()
         flow = Flow.from_client_secrets_file(
             secrets_path,
             scopes=SCOPES,
-            redirect_uri=url_for("oauth_google_callback", _external=True),
+            redirect_uri=redirect_uri,
             state=session.get("oauth_state"),
         )
-        # Exchange the auth code for tokens
-        os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"   # localhost is http, not https
-        flow.fetch_token(authorization_response=request.url.replace("http://", "https://") if request.url.startswith("https://") else request.url)
+        flow.fetch_token(authorization_response=request.url)
         creds = flow.credentials
 
         token_json = json.dumps({
