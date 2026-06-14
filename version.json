@@ -1,5 +1,5 @@
 {
-  "version": "1.0.5",
-  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.0.5/PuconKayakRetreat.dmg",
-  "release_notes": "Navigable month calendar on dashboard with live stats and day detail panel"
+  "version": "1.0.6",
+  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.0.6/PuconKayakRetreat.dmg",
+  "release_notes": "Fix reservations page crash (stray endblock tag)"
 }
