@@ -1,7 +1,7 @@
-import time
 import gspread
 from google.oauth2.service_account import Credentials
-from datetime import datetime
+
+from utils import _parse_dt, Cache  # single source of truth
 
 SCOPES = [
     "https://spreadsheets.google.com/feeds",
@@ -41,9 +41,7 @@ class SheetsClient:
         self._sheet_id = sheet_id
         self._client = None
         self._spreadsheet = None
-        self._cache = {}
-        self._cache_ts = {}
-        self._cache_ttl = 30  # seconds
+        self._cache = Cache(ttl=30)  # longer TTL — Sheets is a remote API
 
     # ── Connection ────────────────────────────────────────────────────────────
 
@@ -84,18 +82,8 @@ class SheetsClient:
                 'named exactly "Inventory" and "Reservations".'
             )
 
-    def _cached(self, key, fetch_fn, force_refresh=False):
-        if not force_refresh and key in self._cache:
-            if time.time() - self._cache_ts.get(key, 0) < self._cache_ttl:
-                return self._cache[key]
-        data = fetch_fn()
-        self._cache[key] = data
-        self._cache_ts[key] = time.time()
-        return data
-
     def clear_cache(self):
         self._cache.clear()
-        self._cache_ts.clear()
 
     def reset_connection(self):
         self._client = None
@@ -121,7 +109,7 @@ class SheetsClient:
         return out
 
     def get_inventory(self, force_refresh=False):
-        raw = self._cached(
+        raw = self._cache.get(
             "inventory",
             lambda: self._get_ws("Inventory").get_all_records(),
             force_refresh,
@@ -188,7 +176,7 @@ class SheetsClient:
     # ── Reservations ──────────────────────────────────────────────────────────
 
     def get_reservations(self, force_refresh=False):
-        return self._cached(
+        return self._cache.get(
             "reservations",
             lambda: self._get_ws("Reservations").get_all_records(),
             force_refresh,
@@ -261,13 +249,4 @@ class SheetsClient:
             raise SheetsError(f"Error checking conflicts: {e}")
 
 
-def _parse_dt(s):
-    if not s:
-        return None
-    s = str(s).strip()
-    for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(s, fmt)
-        except ValueError:
-            continue
-    return None
+# _parse_dt imported from utils — used above in check_conflicts

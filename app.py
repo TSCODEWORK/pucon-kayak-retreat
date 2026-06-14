@@ -17,7 +17,8 @@ from flask import (
     session, flash, jsonify,
 )
 from dotenv import load_dotenv
-from db import DatabaseClient, DatabaseError, _parse_dt
+from utils import _parse_dt  # single source of truth
+from db import DatabaseClient, DatabaseError
 from sheets import SheetsClient, SheetsError
 from sync import SheetsSyncer
 
@@ -259,8 +260,8 @@ def dashboard():
         if view == "month":
             year, month = today.year, today.month
             _, days_in_month = cal_module.monthrange(year, month)
-            month_start = date_type(year, month, 1)
-            month_end = date_type(year, month, days_in_month)
+            month_start = date(year, month, 1)
+            month_end = date(year, month, days_in_month)
 
             day_counts = {}
             item_ids_this_month = set()
@@ -309,7 +310,7 @@ def dashboard():
             }
 
             for d in range(1, days_in_month + 1):
-                day = date_type(year, month, d)
+                day = date(year, month, d)
                 count = day_counts.get(day, 0)
                 month_days.append({
                     "date": day,
@@ -394,6 +395,52 @@ def reservations():
     )
 
 
+# ── Shared form validation helper (items 34-35) ───────────────────────────────
+
+def _validate_reservation_form(form):
+    """Validate the fields common to both 'create' and 'edit' reservation forms.
+
+    Returns (errors, parsed) where:
+      errors  — list of human-readable error strings (empty = valid)
+      parsed  — dict with start_str, end_str, start_dt, end_dt, pay_amt
+    """
+    errors = []
+    start_str = form.get("start_datetime", "").strip()
+    end_str   = form.get("end_datetime",   "").strip()
+
+    if not form.getlist("item_ids"):
+        errors.append("Select at least one item.")
+    if not start_str:
+        errors.append("Start date/time is required.")
+    if not end_str:
+        errors.append("End date/time is required.")
+
+    start_dt = _parse_dt(start_str) if start_str else None
+    end_dt   = _parse_dt(end_str)   if end_str   else None
+
+    if start_str and not start_dt:
+        errors.append("Start date/time is not a valid date.")
+    if end_str and not end_dt:
+        errors.append("End date/time is not a valid date.")
+    if start_dt and end_dt and end_dt <= start_dt:
+        errors.append("End time must be after start time.")
+
+    pay_amt = 0.0
+    try:
+        pay_amt = float(form.get("payment_amount", "0") or "0")
+        if pay_amt < 0:
+            errors.append("Payment amount cannot be negative.")
+    except ValueError:
+        errors.append("Payment amount must be a number.")
+
+    parsed = {
+        "start_str": start_str, "end_str": end_str,
+        "start_dt": start_dt,   "end_dt": end_dt,
+        "pay_amt": pay_amt,
+    }
+    return errors, parsed
+
+
 # ── New reservation ───────────────────────────────────────────────────────────
 
 @app.route("/reservations/new", methods=["GET", "POST"])
@@ -423,33 +470,13 @@ def new_reservation():
     if request.method == "POST":
         form_data = request.form.to_dict()
         item_ids = request.form.getlist("item_ids")
-        start_str = request.form.get("start_datetime", "").strip()
-        end_str = request.form.get("end_datetime", "").strip()
 
-        errors = []
+        errors, parsed = _validate_reservation_form(request.form)
+        start_str = parsed["start_str"]
+        end_str   = parsed["end_str"]
+
         if not request.form.get("customer_name", "").strip():
             errors.append("Customer name is required.")
-        if not item_ids:
-            errors.append("Select at least one item.")
-        if not start_str:
-            errors.append("Start date/time is required.")
-        if not end_str:
-            errors.append("End date/time is required.")
-        # Parse with _parse_dt to catch malformed strings, then compare as datetimes
-        start_dt_val = _parse_dt(start_str) if start_str else None
-        end_dt_val = _parse_dt(end_str) if end_str else None
-        if start_str and not start_dt_val:
-            errors.append("Start date/time is not a valid date.")
-        if end_str and not end_dt_val:
-            errors.append("End date/time is not a valid date.")
-        if start_dt_val and end_dt_val and end_dt_val <= start_dt_val:
-            errors.append("End time must be after start time.")
-        try:
-            pay_amt = float(request.form.get("payment_amount", "0") or "0")
-            if pay_amt < 0:
-                errors.append("Payment amount cannot be negative.")
-        except ValueError:
-            errors.append("Payment amount must be a number.")
 
         if not errors:
             try:
@@ -552,31 +579,24 @@ def reservation_detail(res_id):
                         if item and item.get("Status") == "Rented":
                             db.update_inventory_item(iid, {"Status": "Available"})
 
-                db.update_reservation(res_id, updates)
+                # Conditional update: only applies if DB status is still current_status.
+                # Prevents double-click/concurrent-POST race (#6).
+                if not db.update_reservation_conditional(res_id, current_status, updates):
+                    flash(
+                        "This reservation was already updated by another request — "
+                        "please refresh the page before trying again.",
+                        "warning",
+                    )
+                    return redirect(url_for("reservation_detail", res_id=res_id))
                 _sync()
                 flash(f"Status updated to {new_status}.", "success")
 
             elif action == "update_details":
                 item_ids = request.form.getlist("item_ids")
-                start_str = request.form.get("start_datetime", "").strip()
-                end_str = request.form.get("end_datetime", "").strip()
-                edit_errors = []
-                if not item_ids:
-                    edit_errors.append("At least one item must be selected.")
-                start_dt_val = _parse_dt(start_str) if start_str else None
-                end_dt_val = _parse_dt(end_str) if end_str else None
-                if start_str and not start_dt_val:
-                    edit_errors.append("Start date/time is not a valid date.")
-                if end_str and not end_dt_val:
-                    edit_errors.append("End date/time is not a valid date.")
-                if start_dt_val and end_dt_val and end_dt_val <= start_dt_val:
-                    edit_errors.append("End time must be after start time.")
-                try:
-                    pay_amt = float(request.form.get("payment_amount", "0") or "0")
-                    if pay_amt < 0:
-                        edit_errors.append("Payment amount cannot be negative.")
-                except ValueError:
-                    edit_errors.append("Payment amount must be a number.")
+                edit_errors, parsed = _validate_reservation_form(request.form)
+                start_str = parsed["start_str"]
+                end_str   = parsed["end_str"]
+                pay_amt   = parsed["pay_amt"]
                 if edit_errors:
                     for err in edit_errors:
                         flash(err, "error")

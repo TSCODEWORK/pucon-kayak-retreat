@@ -8,10 +8,10 @@ needs no changes when swapping SheetsClient for DatabaseClient.
 import os
 import sqlite3
 import threading
-import time
-from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
+
+from utils import _parse_dt, Cache  # single source of truth for both helpers
 
 # Canonical column names (match Sheets headers exactly)
 INVENTORY_HEADERS = [
@@ -37,9 +37,7 @@ class DatabaseClient:
             db_path = os.environ.get("PKR_DB_PATH", ".")
         self._db_file = str(Path(db_path) / "rental.db")
         self._lock = threading.Lock()
-        self._cache: dict = {}
-        self._cache_ts: dict = {}
-        self._cache_ttl = 5  # seconds (short — SQLite is local, no reason for long TTL)
+        self._cache = Cache(ttl=5)  # short TTL — SQLite is local, reads are fast
         self._init_db()
 
     # ── Setup ─────────────────────────────────────────────────────────────────
@@ -96,18 +94,8 @@ class DatabaseClient:
 
     # ── Cache helpers ─────────────────────────────────────────────────────────
 
-    def _cached(self, key, fetch_fn, force_refresh=False):
-        if not force_refresh and key in self._cache:
-            if time.time() - self._cache_ts.get(key, 0) < self._cache_ttl:
-                return self._cache[key]
-        data = fetch_fn()
-        self._cache[key] = data
-        self._cache_ts[key] = time.time()
-        return data
-
     def clear_cache(self):
         self._cache.clear()
-        self._cache_ts.clear()
 
     # ── Inventory ─────────────────────────────────────────────────────────────
 
@@ -118,7 +106,7 @@ class DatabaseClient:
                     'SELECT * FROM inventory ORDER BY "Category", "Item ID"'
                 ).fetchall()
                 return [dict(r) for r in rows]
-        return self._cached("inventory", _fetch, force_refresh)
+        return self._cache.get("inventory", _fetch, force_refresh)
 
     def add_inventory_item(self, item: dict):
         try:
@@ -203,7 +191,7 @@ class DatabaseClient:
                     'SELECT * FROM reservations ORDER BY "Start Date & Time" DESC'
                 ).fetchall()
                 return [dict(r) for r in rows]
-        return self._cached("reservations", _fetch, force_refresh)
+        return self._cache.get("reservations", _fetch, force_refresh)
 
     def add_reservation(self, reservation: dict):
         try:
@@ -234,6 +222,29 @@ class DatabaseClient:
             return True
         except DatabaseError:
             raise
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Error updating reservation: {e}")
+
+    def update_reservation_conditional(self, res_id: str, expected_status: str, updates: dict) -> bool:
+        """Update a reservation only if its current status matches expected_status.
+
+        Returns True if the row was updated, False if the status had already changed
+        (a concurrent request won the race — e.g. double-click on Check Out).
+        This is an atomic DB-level guard against double-submission races (#6).
+        """
+        try:
+            set_parts = ", ".join(f'"{k}" = ?' for k in updates)
+            values = list(updates.values()) + [res_id, expected_status]
+            with self._lock, self._connect() as conn:
+                cur = conn.execute(
+                    f'UPDATE reservations SET {set_parts} '
+                    f'WHERE "Reservation ID" = ? AND "Reservation Status" = ?',
+                    values,
+                )
+                updated = cur.rowcount > 0
+            if updated:
+                self.clear_cache()
+            return updated
         except sqlite3.Error as e:
             raise DatabaseError(f"Error updating reservation: {e}")
 
@@ -269,13 +280,6 @@ class DatabaseClient:
             raise DatabaseError(f"Error checking conflicts: {e}")
 
 
-def _parse_dt(s):
-    if not s:
-        return None
-    s = str(s).strip()
-    for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(s, fmt)
-        except ValueError:
-            continue
-    return None
+# _parse_dt is re-exported here so existing callers using `from db import _parse_dt`
+# continue to work without changes.
+__all__ = ["DatabaseClient", "DatabaseError", "_parse_dt"]
