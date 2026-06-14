@@ -34,7 +34,7 @@ from sync import SheetsSyncer
 
 log = logging.getLogger(__name__)
 
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.5"
 
 # OAuth2 over HTTP is fine for localhost (Desktop app running on the user's machine)
 os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
@@ -72,6 +72,11 @@ VALID_TRANSITIONS = {
     "Returned":    set(),   # terminal
     "Canceled":    set(),   # terminal
 }
+
+def _split_item_ids(s) -> list:
+    """Split a comma-separated Item IDs string into a clean list (P-8)."""
+    return [i.strip() for i in str(s or "").split(",") if i.strip()]
+
 
 def _fetch_clp_rate() -> float:
     """Fetch live USD→CLP exchange rate from open.er-api.com (free, no auth)."""
@@ -222,7 +227,7 @@ def logout():
 @app.route("/")
 @login_required
 def dashboard():
-    view = request.args.get("view", "day")
+    view = request.args.get("view", "month")
     sheets_error = None
     today = date.today()
 
@@ -367,6 +372,25 @@ def dashboard():
     except (DatabaseError, SheetsError) as e:
         sheets_error = str(e)
 
+    # Build compact reservation list for the JS calendar (all non-canceled)
+    try:
+        _all_res = db.get_reservations()
+    except Exception:
+        _all_res = []
+    calendar_reservations = [
+        {
+            "id":     r.get("Reservation ID", ""),
+            "customer": r.get("Customer Name", "—"),
+            "start":  r.get("Start Date & Time", ""),
+            "end":    r.get("End Date & Time", ""),
+            "status": r.get("Reservation Status", ""),
+            "items":  r.get("Item IDs", ""),
+            "type":   r.get("Rental Type", ""),
+        }
+        for r in _all_res
+        if r.get("Reservation Status", "") != "Canceled"
+    ]
+
     return render_template(
         "dashboard.html",
         view=view,
@@ -382,9 +406,10 @@ def dashboard():
         maintenance_items=maintenance_items,
         # week view
         week_days=week_days,
-        # month view
+        # month view (server-side fallback, JS calendar uses calendar_reservations)
         month_stats=month_stats,
         month_days=month_days,
+        calendar_reservations=calendar_reservations,
         sheets_error=sheets_error,
     )
 
@@ -634,7 +659,7 @@ def reservation_detail(res_id):
                     return redirect(url_for("reservation_detail", res_id=res_id))
 
                 updates = {"Reservation Status": new_status}
-                item_ids = [i.strip() for i in str(reservation.get("Item IDs", "")).split(",") if i.strip()]
+                item_ids = _split_item_ids(reservation.get("Item IDs", ""))
 
                 if new_status == "Checked Out":
                     for iid in item_ids:
@@ -691,7 +716,7 @@ def reservation_detail(res_id):
                     all_res2 = db.get_reservations(force_refresh=True)
                     res2 = next((r for r in all_res2 if str(r.get("Reservation ID")) == res_id), reservation)
                     inv2 = db.get_inventory()
-                    item_ids2 = [i.strip() for i in str(res2.get("Item IDs","")).split(",") if i.strip()]
+                    item_ids2 = _split_item_ids(res2.get("Item IDs",""))
                     reserved_items2 = [i for i in inv2 if str(i.get("Item ID")) in item_ids2]
                     return render_template(
                         "reservation_detail.html",
@@ -732,7 +757,7 @@ def reservation_detail(res_id):
         if not reservation:
             flash("Reservation no longer found — it may have been removed.", "error")
             return redirect(url_for("reservations"))
-        item_ids = [i.strip() for i in str(reservation.get("Item IDs", "")).split(",") if i.strip()]
+        item_ids = _split_item_ids(reservation.get("Item IDs", ""))
         reserved_items = [i for i in inventory if str(i.get("Item ID")) in item_ids]
 
         # F-6: discount tier in a single shared helper (also used by apply_discount)
@@ -846,7 +871,7 @@ def delete_inventory(item_id):
         active_refs = [
             r for r in db.get_reservations()
             if r.get("Reservation Status") in active_statuses
-            and item_id in [i.strip() for i in str(r.get("Item IDs", "")).split(",") if i.strip()]
+            and item_id in _split_item_ids(r.get("Item IDs",""))
         ]
         if active_refs:
             res_ids = ", ".join(r.get("Reservation ID", "?") for r in active_refs)
@@ -1021,6 +1046,13 @@ def update_inventory(item_id):
         ]:
             if field in request.form:
                 updates[col] = request.form.get(field, "").strip()
+        # Name/Description and Category from edit modal (F-4)
+        name_val = request.form.get("name", "").strip()
+        if name_val:
+            updates["Name/Description"] = name_val
+        category_val = request.form.get("category", "").strip()
+        if category_val:
+            updates["Category"] = category_val
         if updates:
             db.update_inventory_item(item_id, updates)
             _sync()
@@ -1065,7 +1097,7 @@ def calendar():
 def api_availability():
     try:
         raw = request.args.get("items", "")
-        item_ids = [i.strip() for i in raw.split(",") if i.strip()]
+        item_ids = _split_item_ids(raw)
         start_str = request.args.get("start", "")
         end_str = request.args.get("end", "")
         exclude_id = request.args.get("exclude", "")
@@ -1095,7 +1127,7 @@ def api_availability():
 def api_pricing():
     try:
         raw = request.args.get("items", "")
-        item_ids = [i.strip() for i in raw.split(",") if i.strip()]
+        item_ids = _split_item_ids(raw)
         rental_type = request.args.get("type", "Hourly")
         start_str = request.args.get("start", "")
         end_str = request.args.get("end", "")
