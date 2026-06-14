@@ -37,6 +37,13 @@
     <a href="{{ url_for('settings_view') }}"
        class="nav-link {% if request.endpoint == 'settings_view' %}active{% endif %}">Settings</a>
     <a href="{{ url_for('new_reservation') }}" class="btn btn-primary nav-cta">+ New Booking</a>
+    <!-- Currency toggle -->
+    <form method="POST" action="{{ url_for('toggle_currency') }}" style="display:inline">
+      {% set cur = get_display_currency() %}
+      <button type="submit" class="btn btn-ghost btn-sm nav-currency-btn" title="Switch currency">
+        {{ cur }} <span style="opacity:.55;font-size:.75em">⇄ {{ 'CLP' if cur == 'USD' else 'USD' }}</span>
+      </button>
+    </form>
     <a href="{{ url_for('logout') }}" class="nav-link nav-logout">Sign Out</a>
   </div>
 </nav>

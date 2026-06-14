@@ -116,6 +116,11 @@
           <option value="Maintenance">Maintenance</option>
         </select>
       </div>
+      <div class="form-group">
+        <label class="form-label">Quantity</label>
+        <input class="form-control" type="number" name="quantity" min="1" step="1"
+          placeholder="1" value="1" style="max-width:90px">
+      </div>
       <div class="form-group" style="grid-column:1/-1">
         <label class="form-label">Condition Notes</label>
         <input class="form-control" type="text" name="condition_notes"
@@ -191,6 +196,9 @@
               {% if item.get('Size') %}
                 <span class="size-badge size-{{ item['Size'].lower() }}">{{ item['Size'] }}</span>
               {% endif %}
+              {% if item.get('Quantity') and item.get('Quantity')|int > 1 %}
+                <span style="font-size:.7rem;background:var(--brand-50);color:var(--brand-dark);border:1px solid var(--brand-light);border-radius:2rem;padding:.1rem .45rem;font-weight:700">×{{ item.get('Quantity') }}</span>
+              {% endif %}
             </div>
           </div>
           <span class="badge badge-{{ item.get('Status','available').lower() }}">{{ item.get('Status','Available') }}</span>
@@ -213,17 +221,17 @@
         <div class="inv-actions">
           {% if item.get('Status') != 'Maintenance' %}
             <button class="btn btn-warning btn-sm"
-              onclick="openInvModal('{{ item['Item ID'] | replace("'","\\'") }}','Maintenance','{{ item.get('Condition Notes','') | replace("'","\\'") }}')">
+              onclick="openInvModal('{{ item['Item ID'] | replace("'","\\'") }}','Maintenance','{{ item.get('Condition Notes','') | replace("'","\\'") }}','{{ item.get('Quantity','1') }}')">
               Maintenance
             </button>
           {% else %}
             <button class="btn btn-success btn-sm"
-              onclick="openInvModal('{{ item['Item ID'] | replace("'","\\'") }}','Available','{{ item.get('Condition Notes','') | replace("'","\\'") }}')">
+              onclick="openInvModal('{{ item['Item ID'] | replace("'","\\'") }}','Available','{{ item.get('Condition Notes','') | replace("'","\\'") }}','{{ item.get('Quantity','1') }}')">
               Set Available
             </button>
           {% endif %}
           <button class="btn btn-ghost btn-sm"
-            onclick="openInvModal('{{ item['Item ID'] | replace("'","\\'") }}','{{ item.get('Status','') | replace("'","\\'") }}','{{ item.get('Condition Notes','') | replace("'","\\'") }}')">
+            onclick="openInvModal('{{ item['Item ID'] | replace("'","\\'") }}','{{ item.get('Status','') | replace("'","\\'") }}','{{ item.get('Condition Notes','') | replace("'","\\'") }}','{{ item.get('Quantity','1') }}')">
             Edit Notes
           </button>
           <form method="POST" action="{{ url_for('delete_inventory', item_id=item['Item ID']) }}" style="display:inline"
@@ -263,6 +271,11 @@
         <option value="Maintenance">Maintenance</option>
       </select>
     </div>
+    <div class="form-group" style="margin-bottom:.85rem">
+      <label class="form-label">Quantity</label>
+      <input class="form-control" type="number" name="quantity" id="inv-qty-input" min="1" step="1"
+        placeholder="1" style="max-width:90px">
+    </div>
     <div class="form-group" style="margin-bottom:1.25rem">
       <label class="form-label">Condition Notes</label>
       <textarea class="form-control" name="condition_notes" id="inv-notes-input" rows="3"
@@ -280,6 +293,20 @@
 
 {% block scripts %}
 <script>
+function openInvModal(itemId, status, notes, qty) {
+  document.getElementById('inv-modal-id').textContent = itemId;
+  document.getElementById('inv-form-id').value = itemId;
+  document.getElementById('inv-modal-action').action = '/inventory/' + encodeURIComponent(itemId) + '/update';
+  document.getElementById('inv-status-select').value = status;
+  document.getElementById('inv-notes-input').value = notes || '';
+  document.getElementById('inv-qty-input').value = qty || 1;
+  document.getElementById('inv-overlay').classList.remove('hidden');
+  document.getElementById('inv-modal').classList.remove('hidden');
+}
+function closeInvModal() {
+  document.getElementById('inv-overlay').classList.add('hidden');
+  document.getElementById('inv-modal').classList.add('hidden');
+}
 function toggleAddForm(category) {
   const panel = document.getElementById('add-equipment-panel');
   const wasHidden = panel.classList.contains('hidden');

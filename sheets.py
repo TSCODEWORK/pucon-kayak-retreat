@@ -11,7 +11,7 @@ SCOPES = [
 # Our canonical inventory columns — written to sheet when setting up or adding equipment
 INVENTORY_HEADERS = [
     "Item ID", "Category", "Name/Description", "Size", "Status", "Condition Notes",
-    "Hourly Rate", "Half-Day Rate", "Full-Day Rate", "Multi-Day Rate",
+    "Hourly Rate", "Half-Day Rate", "Full-Day Rate", "Multi-Day Rate", "Quantity",
 ]
 
 # Columns from the pre-existing PKR rental sheet

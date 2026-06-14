@@ -402,6 +402,32 @@
   {% endif %}
 </div>
 
+{% if discount_pct > 0 %}
+<!-- ── Discount banner ───────────────────────────────────────────────────── -->
+<div style="background:linear-gradient(90deg,#064e3b,#065f46);border-radius:var(--radius);padding:1rem 1.4rem;margin-bottom:1.5rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;box-shadow:0 2px 12px rgba(6,78,59,.2)">
+  <div style="font-size:1.6rem">🏷️</div>
+  <div style="flex:1">
+    <div style="font-family:'Montserrat',sans-serif;font-weight:800;font-size:1rem;color:#4ade80">
+      {{ discount_pct }}% Extended Rental Discount Available
+    </div>
+    <div style="font-size:.82rem;color:rgba(255,255,255,.75);margin-top:.15rem">
+      This booking is {{ discount_days }} days — kayak rentals over 10 days qualify for a long-stay discount.
+    </div>
+  </div>
+  {% if st not in ('Returned','Canceled') %}
+  <form method="POST" action="{{ url_for('apply_discount', res_id=reservation.get('Reservation ID')) }}"
+    onsubmit="return confirm('Apply {{ discount_pct }}% discount to the total? This will update the payment amount.')">
+    <input type="hidden" name="discount_pct" value="{{ discount_pct }}">
+    <button type="submit" class="btn btn-success" style="white-space:nowrap">
+      Apply {{ discount_pct }}% Off
+    </button>
+  </form>
+  {% else %}
+    <span style="font-size:.8rem;color:rgba(255,255,255,.5);font-style:italic">Discount not applicable ({{ st }})</span>
+  {% endif %}
+</div>
+{% endif %}
+
 <!-- ── Body ────────────────────────────────────────────────────────────────── -->
 <div class="res-body">
 

@@ -162,6 +162,52 @@
     </div>
   </div>
 
+  <!-- ── Currency & Exchange Rate ── -->
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h3>Currency & Exchange Rate</h3>
+        <div class="text-sm text-muted">Toggle display currency; rate is fetched live from open.er-api.com</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <!-- Current rate display -->
+      <div style="display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap;margin-bottom:1.1rem;padding:.85rem 1rem;background:var(--slate-50);border-radius:var(--radius-sm);border:1px solid var(--border)">
+        <div>
+          <div class="text-xs text-muted" style="text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin-bottom:.2rem">USD → CLP Rate</div>
+          {% if exchange_rate %}
+            <div style="font-family:'Montserrat',sans-serif;font-size:1.4rem;font-weight:800;color:var(--brand-dark)">
+              1 USD = {{ exchange_rate | int }} CLP
+            </div>
+            {% if exchange_rate_updated %}
+              <div class="text-xs text-muted" style="margin-top:.2rem">Updated {{ exchange_rate_updated }}</div>
+            {% endif %}
+          {% else %}
+            <div style="color:var(--text-muted);font-size:.9rem">Rate not loaded yet — click Refresh</div>
+          {% endif %}
+        </div>
+        <form method="POST" action="{{ url_for('refresh_rate') }}" style="margin-left:auto">
+          <button type="submit" class="btn btn-ghost btn-sm">↺ Refresh Rate</button>
+        </form>
+      </div>
+      <!-- Toggle display currency -->
+      <div style="display:flex;align-items:center;gap:1rem">
+        <span class="text-sm text-muted">Display prices in:</span>
+        <form method="POST" action="{{ url_for('toggle_currency') }}">
+          {% set cur = get_display_currency() %}
+          <button type="submit" class="btn {{ 'btn-primary' if cur == 'USD' else 'btn-ghost' }} btn-sm">USD</button>
+        </form>
+        <form method="POST" action="{{ url_for('toggle_currency') }}">
+          {% set cur = get_display_currency() %}
+          <button type="submit" class="btn {{ 'btn-primary' if cur == 'CLP' else 'btn-ghost' }} btn-sm">CLP</button>
+        </form>
+        <span class="text-xs text-muted" style="margin-left:.25rem">
+          {% set cur = get_display_currency() %}Currently showing: <strong>{{ cur }}</strong>
+        </span>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Google Sheets Backup ── -->
   <div class="card" style="grid-column:1/-1">
     <div class="card-header">

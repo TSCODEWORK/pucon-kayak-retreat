@@ -6,6 +6,7 @@ import math
 import functools
 import threading
 import time
+import urllib.request
 from pathlib import Path
 from datetime import datetime, date
 from flask import (
@@ -38,6 +39,33 @@ app.secret_key = os.environ.get("SECRET_KEY", "pucon-kayak-dev-secret")
 app.config["PERMANENT_SESSION_LIFETIME"] = 60 * 60 * 12  # 12 hours
 
 db = DatabaseClient()
+
+KAYAK_CATEGORIES = {
+    'Dagger','Jackson Kayak','Waka','Spade','Pyranha','Liquid Logic',
+    'Perception','Liquidlogic','Pyranha','Dagger Kayak',
+}
+
+def _fetch_clp_rate() -> float:
+    """Fetch live USD→CLP exchange rate from open.er-api.com (free, no auth)."""
+    try:
+        url = "https://open.er-api.com/v6/latest/USD"
+        req = urllib.request.Request(url, headers={"User-Agent": "PKR/1.0"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            data = json.loads(r.read())
+        return float(data["rates"]["CLP"])
+    except Exception:
+        # Fallback to stored rate or default
+        stored = db.get_settings().get("exchange_rate_usd_clp", "")
+        return float(stored) if stored else 950.0
+
+def _get_clp_rate():
+    settings = db.get_settings()
+    stored = settings.get("exchange_rate_usd_clp", "")
+    return float(stored) if stored else 950.0
+
+def get_display_currency():
+    """Returns 'USD' or 'CLP' based on session preference."""
+    return session.get("display_currency", db.get_settings().get("default_currency", "USD"))
 
 # Load PIN from DB (falls back to env var, then "1234")
 _startup_settings = db.get_settings()
@@ -580,12 +608,33 @@ def reservation_detail(res_id):
         item_ids = [i.strip() for i in str(reservation.get("Item IDs", "")).split(",") if i.strip()]
         reserved_items = [i for i in inventory if str(i.get("Item ID")) in item_ids]
 
+        # Discount calculation (kayak rentals only, 10+ days)
+        discount_pct = 0
+        discount_days = 0
+        has_kayak_items = any(
+            i.get("Category", "") in KAYAK_CATEGORIES for i in reserved_items
+        )
+        if has_kayak_items:
+            start_dt_d = _parse_dt(reservation.get("Start Date & Time", ""))
+            end_dt_d = _parse_dt(reservation.get("End Date & Time", ""))
+            if start_dt_d and end_dt_d:
+                discount_days = (end_dt_d - start_dt_d).days
+                if discount_days >= 10:
+                    if discount_days <= 15:   discount_pct = 5
+                    elif discount_days <= 20: discount_pct = 10
+                    elif discount_days <= 25: discount_pct = 15
+                    elif discount_days <= 30: discount_pct = 20
+                    else:                     discount_pct = 25
+
         return render_template(
             "reservation_detail.html",
             reservation=reservation,
             inventory=inventory,
             reserved_items=reserved_items,
             item_ids=item_ids,
+            discount_pct=discount_pct,
+            discount_days=discount_days,
+            has_kayak_items=has_kayak_items,
         )
 
     except SheetsError as e:
@@ -645,6 +694,7 @@ def add_equipment():
             flash(f"Item ID '{item_id}' already exists. Use a unique ID.", "error")
             return redirect(url_for("inventory_view"))
 
+        quantity = request.form.get("quantity", "1").strip() or "1"
         item = {
             "Item ID":          item_id,
             "Category":         request.form.get("category", "").strip(),
@@ -656,6 +706,7 @@ def add_equipment():
             "Half-Day Rate":    request.form.get("half_day_rate", ""),
             "Full-Day Rate":    request.form.get("full_day_rate", ""),
             "Multi-Day Rate":   request.form.get("multi_day_rate", ""),
+            "Quantity":         quantity,
         }
         db.add_inventory_item(item)
         _sync()
@@ -695,11 +746,14 @@ def update_inventory(item_id):
         updates = {}
         status = request.form.get("status")
         condition_notes = request.form.get("condition_notes")
+        quantity = request.form.get("quantity")
         if status:
             updates["Status"] = status
         # Only overwrite notes if the user explicitly typed something
         if condition_notes:
             updates["Condition Notes"] = condition_notes
+        if quantity:
+            updates["Quantity"] = quantity
         if updates:
             db.update_inventory_item(item_id, updates)
             _sync()
@@ -943,6 +997,8 @@ def settings_view():
         except Exception:
             last_synced_label = last_synced
     sheet_id = settings.get("sheet_id", "")
+    exchange_rate = db.get_settings().get("exchange_rate_usd_clp", "950")
+    exchange_rate_updated = db.get_settings().get("exchange_rate_updated", "")
     return render_template(
         "settings.html",
         settings=settings,
@@ -950,6 +1006,8 @@ def settings_view():
         last_synced=last_synced,
         last_synced_label=last_synced_label,
         sheet_id=sheet_id,
+        exchange_rate=exchange_rate,
+        exchange_rate_updated=exchange_rate_updated,
     )
 
 
@@ -1034,10 +1092,81 @@ def fmt_currency(v):
     except (TypeError, ValueError):
         return f"${v}" if v else "—"
 
+def fmt_price(v, currency=None):
+    """Format a price in the current display currency (USD or CLP)."""
+    try:
+        amount = float(v)
+    except (TypeError, ValueError):
+        return "—"
+    if currency is None:
+        currency = "USD"  # default fallback
+    if currency == "CLP":
+        clp = amount * _get_clp_rate()
+        return f"CLP ${clp:,.0f}"
+    else:
+        return f"${amount:.2f}"
+
 app.jinja_env.filters["fmt_datetime"] = fmt_datetime
 app.jinja_env.filters["fmt_date"] = fmt_date
 app.jinja_env.filters["fmt_currency"] = fmt_currency
+app.jinja_env.filters["fmt_price"] = fmt_price
 app.jinja_env.globals["now"] = datetime.now
+app.jinja_env.globals["get_display_currency"] = get_display_currency
+app.jinja_env.globals["get_clp_rate"] = _get_clp_rate
+
+
+@app.route("/api/toggle-currency", methods=["POST"])
+def toggle_currency():
+    current = get_display_currency()
+    session["display_currency"] = "CLP" if current == "USD" else "USD"
+    return redirect(request.referrer or url_for("dashboard"))
+
+
+@app.route("/api/refresh-rate", methods=["POST"])
+@login_required
+def refresh_rate():
+    try:
+        rate = _fetch_clp_rate()
+        from datetime import datetime
+        db.update_settings({
+            "exchange_rate_usd_clp": str(rate),
+            "exchange_rate_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        })
+        flash(f"Exchange rate updated: 1 USD = {rate:,.0f} CLP", "success")
+    except Exception as e:
+        flash(f"Could not fetch rate: {e}", "error")
+    return redirect(request.referrer or url_for("settings_view"))
+
+
+@app.route("/reservations/<res_id>/apply-discount", methods=["POST"])
+@login_required
+def apply_discount(res_id):
+    try:
+        pct = int(request.form.get("discount_pct", "0"))
+        if pct not in (5, 10, 15, 20, 25):
+            flash("Invalid discount.", "error")
+            return redirect(url_for("reservation_detail", res_id=res_id))
+        all_res = db.get_reservations(force_refresh=True)
+        reservation = next((r for r in all_res if str(r.get("Reservation ID")) == res_id), None)
+        if not reservation:
+            flash("Reservation not found.", "error")
+            return redirect(url_for("reservations"))
+        current_amount = float(reservation.get("Payment Amount", "0") or "0")
+        if current_amount <= 0:
+            flash("No payment amount set to discount.", "error")
+            return redirect(url_for("reservation_detail", res_id=res_id))
+        discounted = round(current_amount * (1 - pct / 100), 2)
+        notes_existing = reservation.get("Notes", "")
+        discount_note = f"\n[{pct}% extended rental discount applied — original amount: ${current_amount:.2f}]"
+        db.update_reservation(res_id, {
+            "Payment Amount": str(discounted),
+            "Notes": (notes_existing + discount_note).strip(),
+        })
+        _sync()
+        flash(f"{pct}% discount applied — new total: ${discounted:.2f}", "success")
+    except Exception as e:
+        flash(f"Error applying discount: {e}", "error")
+    return redirect(url_for("reservation_detail", res_id=res_id))
 
 
 if __name__ == "__main__":

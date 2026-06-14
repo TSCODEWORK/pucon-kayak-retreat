@@ -17,7 +17,7 @@ from typing import Optional, List
 INVENTORY_HEADERS = [
     "Item ID", "Category", "Name/Description", "Size", "Status",
     "Condition Notes", "Hourly Rate", "Half-Day Rate", "Full-Day Rate",
-    "Multi-Day Rate",
+    "Multi-Day Rate", "Quantity",
 ]
 RESERVATION_HEADERS = [
     "Reservation ID", "Customer Name", "Customer Phone", "Customer Email",
@@ -64,7 +64,8 @@ class DatabaseClient:
                     "Hourly Rate"      TEXT DEFAULT '',
                     "Half-Day Rate"    TEXT DEFAULT '',
                     "Full-Day Rate"    TEXT DEFAULT '',
-                    "Multi-Day Rate"   TEXT DEFAULT ''
+                    "Multi-Day Rate"   TEXT DEFAULT '',
+                    "Quantity"         INTEGER DEFAULT 1
                 );
                 CREATE TABLE IF NOT EXISTS settings (
                     key   TEXT PRIMARY KEY,
@@ -87,6 +88,11 @@ class DatabaseClient:
                     "Created At"        TEXT DEFAULT ''
                 );
             """)
+            # Migration: add Quantity column if it doesn't exist (existing DBs)
+            try:
+                conn.execute('ALTER TABLE inventory ADD COLUMN "Quantity" INTEGER DEFAULT 1')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
 
     # ── Cache helpers ─────────────────────────────────────────────────────────
 
