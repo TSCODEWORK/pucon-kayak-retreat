@@ -377,7 +377,7 @@ Dagger - Code M (2)&#9;Dagger&#9;Dagger Code M&#9;M&#9;30000&#9;30000"
                   Edit
                 </button>
                 <form method="POST" action="{{ url_for('delete_inventory', item_id=item['Item ID']) }}" style="display:inline"
-                  onsubmit="return confirm('Remove {{ item['Item ID'] | replace(\"'\",\"\\\\'\")|replace('\"','&quot;') }}?')">
+                  onsubmit="return confirm('Remove {{ item['Item ID'] | replace("'", "\\'") }}?')">
                   <button type="submit" class="btn btn-danger btn-sm">Remove</button>
                 </form>
               </div>
