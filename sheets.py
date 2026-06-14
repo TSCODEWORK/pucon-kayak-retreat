@@ -1,10 +1,13 @@
+import json
 import gspread
-from google.oauth2.service_account import Credentials
+from google.oauth2.service_account import Credentials as ServiceAccountCredentials
+from google.oauth2.credentials import Credentials as OAuthCredentials
+from google.auth.transport.requests import Request
 
 from utils import _parse_dt, Cache  # single source of truth
 
 SCOPES = [
-    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
 
@@ -36,35 +39,72 @@ class SheetsError(Exception):
 
 
 class SheetsClient:
-    def __init__(self, credentials_file, sheet_id):
+    def __init__(self, credentials_file, sheet_id, oauth_token_json=None, on_token_refresh=None):
         self._credentials_file = credentials_file
         self._sheet_id = sheet_id
+        self._oauth_token_json = oauth_token_json      # JSON string of OAuth2 token
+        self._on_token_refresh = on_token_refresh      # callback(new_token_json) when token refreshes
         self._client = None
         self._spreadsheet = None
         self._cache = Cache(ttl=30)  # longer TTL — Sheets is a remote API
 
     # ── Connection ────────────────────────────────────────────────────────────
 
+    def _build_credentials(self):
+        """Return Google credentials — OAuth2 token takes priority over service account file."""
+        # OAuth2 path (user clicked Connect Google Account in Settings)
+        if self._oauth_token_json:
+            try:
+                token_data = json.loads(self._oauth_token_json)
+                creds = OAuthCredentials(
+                    token=token_data.get("token"),
+                    refresh_token=token_data.get("refresh_token"),
+                    token_uri=token_data.get("token_uri", "https://oauth2.googleapis.com/token"),
+                    client_id=token_data.get("client_id"),
+                    client_secret=token_data.get("client_secret"),
+                    scopes=token_data.get("scopes", SCOPES),
+                )
+                if creds.expired and creds.refresh_token:
+                    creds.refresh(Request())
+                    # Persist refreshed token so the user isn't asked to re-auth
+                    if self._on_token_refresh:
+                        updated = {
+                            "token":         creds.token,
+                            "refresh_token": creds.refresh_token,
+                            "token_uri":     creds.token_uri,
+                            "client_id":     creds.client_id,
+                            "client_secret": creds.client_secret,
+                            "scopes":        list(creds.scopes or SCOPES),
+                        }
+                        self._on_token_refresh(json.dumps(updated))
+                return creds
+            except Exception as e:
+                raise SheetsError(f"OAuth2 token error — please reconnect Google account in Settings: {e}")
+
+        # Service account fallback (legacy / developer setup)
+        try:
+            return ServiceAccountCredentials.from_service_account_file(
+                self._credentials_file, scopes=SCOPES
+            )
+        except FileNotFoundError:
+            raise SheetsError(
+                "Google account not connected. Go to Settings → Google Sheets "
+                "and click Connect Google Account."
+            )
+
     def _connect(self):
         try:
             if self._client is None:
-                creds = Credentials.from_service_account_file(
-                    self._credentials_file, scopes=SCOPES
-                )
+                creds = self._build_credentials()
                 self._client = gspread.authorize(creds)
             if self._spreadsheet is None:
                 if not self._sheet_id:
                     raise SheetsError(
-                        "GOOGLE_SHEET_ID is not set. Add it to your .env file."
+                        "No Google Sheet linked. Go to Settings → Google Sheets "
+                        "and paste your sheet URL."
                     )
                 self._spreadsheet = self._client.open_by_key(self._sheet_id)
             return self._spreadsheet
-        except FileNotFoundError:
-            raise SheetsError(
-                f'Credentials file "{self._credentials_file}" not found. '
-                "Place your Google service account JSON file in the project folder "
-                "and set GOOGLE_CREDENTIALS_FILE in .env."
-            )
         except gspread.exceptions.APIError as e:
             raise SheetsError(f"Google Sheets API error: {e}")
         except SheetsError:
@@ -85,9 +125,11 @@ class SheetsClient:
     def clear_cache(self):
         self._cache.clear()
 
-    def reset_connection(self):
+    def reset_connection(self, oauth_token_json=None):
         self._client = None
         self._spreadsheet = None
+        if oauth_token_json is not None:
+            self._oauth_token_json = oauth_token_json
         self.clear_cache()
 
     # ── Inventory ─────────────────────────────────────────────────────────────

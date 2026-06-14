@@ -19,7 +19,7 @@ from flask import (
 from dotenv import load_dotenv
 from utils import _parse_dt  # single source of truth
 from db import DatabaseClient, DatabaseError
-from sheets import SheetsClient, SheetsError
+from sheets import SheetsClient, SheetsError, SCOPES
 from sync import SheetsSyncer
 
 log = logging.getLogger(__name__)
@@ -100,9 +100,16 @@ if _saved_sheet_id:
     os.environ["GOOGLE_SHEET_ID"] = _saved_sheet_id
 
 # Sheets sync is optional — silently disabled if credentials/sheet not configured
+def _on_oauth_token_refresh(new_token_json):
+    """Persist a refreshed OAuth token back to the DB and update the live client."""
+    db.update_settings({"google_oauth_token": new_token_json})
+    _sheets_client._oauth_token_json = new_token_json
+
 _sheets_client = SheetsClient(
     credentials_file=os.environ.get("GOOGLE_CREDENTIALS_FILE", "credentials.json"),
-    sheet_id=os.environ.get("GOOGLE_SHEET_ID", ""),
+    sheet_id=_startup_settings.get("sheet_id", "") or os.environ.get("GOOGLE_SHEET_ID", ""),
+    oauth_token_json=_startup_settings.get("google_oauth_token", "") or None,
+    on_token_refresh=_on_oauth_token_refresh,
 )
 syncer = SheetsSyncer(_sheets_client)
 
@@ -1208,6 +1215,84 @@ def refresh_rate():
     except Exception as e:
         flash(f"Could not fetch rate: {e}", "error")
     return redirect(request.referrer or url_for("settings_view"))
+
+
+@app.route("/oauth/google")
+@login_required
+def oauth_google_start():
+    """Start the Google OAuth2 flow — redirect user to Google's consent screen."""
+    try:
+        from google_auth_oauthlib.flow import Flow
+        secrets_path = str(_BASE / "client_secrets.json")
+        if not os.path.exists(secrets_path):
+            flash(
+                "client_secrets.json not found. Place the file in the app folder "
+                "and restart the app.",
+                "error",
+            )
+            return redirect(url_for("settings_view"))
+
+        flow = Flow.from_client_secrets_file(
+            secrets_path,
+            scopes=SCOPES,
+            redirect_uri=url_for("oauth_google_callback", _external=True),
+        )
+        auth_url, state = flow.authorization_url(
+            access_type="offline",
+            include_granted_scopes="true",
+            prompt="consent",           # always ask so we get a refresh_token
+        )
+        session["oauth_state"] = state
+        return redirect(auth_url)
+    except Exception as e:
+        flash(f"Could not start Google sign-in: {e}", "error")
+        return redirect(url_for("settings_view"))
+
+
+@app.route("/oauth/callback")
+@login_required
+def oauth_google_callback():
+    """Handle Google's redirect after the user grants permission."""
+    try:
+        from google_auth_oauthlib.flow import Flow
+        secrets_path = str(_BASE / "client_secrets.json")
+        flow = Flow.from_client_secrets_file(
+            secrets_path,
+            scopes=SCOPES,
+            redirect_uri=url_for("oauth_google_callback", _external=True),
+            state=session.get("oauth_state"),
+        )
+        # Exchange the auth code for tokens
+        os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"   # localhost is http, not https
+        flow.fetch_token(authorization_response=request.url.replace("http://", "https://") if request.url.startswith("https://") else request.url)
+        creds = flow.credentials
+
+        token_json = json.dumps({
+            "token":         creds.token,
+            "refresh_token": creds.refresh_token,
+            "token_uri":     creds.token_uri,
+            "client_id":     creds.client_id,
+            "client_secret": creds.client_secret,
+            "scopes":        list(creds.scopes or SCOPES),
+        })
+        db.update_settings({"google_oauth_token": token_json})
+        # Hot-reload the live client — no restart needed
+        _sheets_client.reset_connection(oauth_token_json=token_json)
+        session.pop("oauth_state", None)
+        flash("Google account connected! Now paste your Sheet URL below and save.", "success")
+    except Exception as e:
+        flash(f"Google sign-in failed: {e}", "error")
+    return redirect(url_for("settings_view"))
+
+
+@app.route("/oauth/disconnect", methods=["POST"])
+@login_required
+def oauth_google_disconnect():
+    """Remove stored OAuth token and disconnect Google Sheets."""
+    db.update_settings({"google_oauth_token": ""})
+    _sheets_client.reset_connection(oauth_token_json=None)
+    flash("Google account disconnected.", "success")
+    return redirect(url_for("settings_view"))
 
 
 @app.route("/reservations/<res_id>/apply-discount", methods=["POST"])

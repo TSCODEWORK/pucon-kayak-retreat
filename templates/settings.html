@@ -214,62 +214,85 @@
     <div class="card-header">
       <div>
         <h3>Google Sheets Backup</h3>
-        <div class="text-sm text-muted">Link a Google Sheet to back up all your data — inventory and reservations — with one click</div>
+        <div class="text-sm text-muted">Automatically backs up all reservations and inventory to Google Sheets in real time</div>
       </div>
     </div>
     <div class="card-body">
       {% set sheet_id = settings.get('sheet_id','') or '' %}
+      {% set google_connected = settings.get('google_oauth_token','') | length > 10 %}
 
-      <form method="POST" style="margin-bottom:1.25rem">
-        <input type="hidden" name="action" value="update_sheet_url">
-        <div class="form-group" style="margin-bottom:.75rem">
-          <label class="form-label">Google Sheet editor link</label>
-          <div class="text-sm text-muted" style="margin-bottom:.5rem">
-            Open your Google Sheet, copy the URL from the address bar, and paste it here. The link looks like:<br>
-            <span style="font-family:monospace;font-size:.8rem;color:var(--text-muted)">https://docs.google.com/spreadsheets/d/<strong>your-sheet-id</strong>/edit</span>
+      <!-- Step 1: Google Account -->
+      <div style="margin-bottom:1.5rem">
+        <div class="form-section-title" style="margin-bottom:.6rem">Step 1 — Connect Google Account</div>
+        {% if google_connected %}
+          <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;padding:.75rem 1rem;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:var(--radius-sm)">
+            <span style="color:var(--green-600);font-weight:700">✓ Google account connected</span>
+            <form method="POST" action="{{ url_for('oauth_google_disconnect') }}" style="margin-left:auto">
+              <button type="submit" class="btn btn-ghost btn-sm"
+                onclick="return confirm('Disconnect Google account? Sheets sync will stop working.')">
+                Disconnect
+              </button>
+            </form>
           </div>
-          <input class="form-control" type="url" name="sheet_url"
-            placeholder="https://docs.google.com/spreadsheets/d/…/edit"
-            value="{{ ('https://docs.google.com/spreadsheets/d/' + sheet_id + '/edit') if sheet_id else '' }}">
-        </div>
-        <button type="submit" class="btn btn-primary">Save Sheet Link</button>
-        {% if sheet_id %}
-          <a href="https://docs.google.com/spreadsheets/d/{{ sheet_id }}/edit" target="_blank"
-             class="btn btn-ghost" style="margin-left:.5rem">↗ Open Sheet</a>
+        {% else %}
+          <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;padding:.75rem 1rem;background:var(--slate-50);border:1px solid var(--border);border-radius:var(--radius-sm)">
+            <span class="text-sm text-muted">Sign in with Google to allow the app to read and write your Sheet.</span>
+            <a href="{{ url_for('oauth_google_start') }}" class="btn btn-primary btn-sm" style="margin-left:auto;white-space:nowrap">
+              🔗 Connect Google Account
+            </a>
+          </div>
         {% endif %}
-      </form>
+      </div>
 
-      <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center;border-top:1px solid var(--border);padding-top:1rem">
-        <div class="text-sm text-muted">
-          {% if sheet_id %}
-            Sheet linked: <span style="font-family:monospace">{{ sheet_id[:20] }}…</span>
-            <br>
-            {% if last_synced %}
-              <span style="color:var(--green-600)">✓ Last synced: {{ last_synced_label }}</span>
-            {% else %}
-              <span style="color:var(--text-muted)">Not synced yet — push or pull to sync.</span>
-            {% endif %}
-          {% else %}
-            No sheet linked yet — paste your editor URL above.
-          {% endif %}
-        </div>
-        <div style="margin-left:auto;display:flex;gap:.75rem;flex-wrap:wrap">
-          <form method="POST" action="{{ url_for('api_pull') }}"
-            onsubmit="{% if not sheet_id %}alert('Link a Google Sheet first.'); return false;{% else %}return confirm('This will overwrite local data from Google Sheets. Any local-only changes will be lost. Continue?');{% endif %}">
-            <button type="submit" class="btn btn-warning" {% if not sheet_id %}title="Link a sheet first"{% endif %}>
-              ↓ Pull from Google Sheets
-            </button>
-          </form>
-          <form method="POST" action="{{ url_for('api_sync') }}"
-            onsubmit="{% if not sheet_id %}alert('Link a Google Sheet first.'); return false;{% endif %}">
-            <button type="submit" class="btn btn-ghost" {% if not sheet_id %}title="Link a sheet first"{% endif %}>
-              ↑ Push to Google Sheets
-            </button>
-          </form>
-          <form method="POST" action="{{ url_for('api_refresh') }}">
-            <button type="submit" class="btn btn-ghost">↺ Clear Cache</button>
-          </form>
-        </div>
+      <!-- Step 2: Sheet URL -->
+      <div style="margin-bottom:1.5rem;{% if not google_connected %}opacity:.5;pointer-events:none{% endif %}">
+        <div class="form-section-title" style="margin-bottom:.6rem">Step 2 — Link your Google Sheet</div>
+        <form method="POST">
+          <input type="hidden" name="action" value="update_sheet_url">
+          <div class="form-group" style="margin-bottom:.75rem">
+            <div class="text-sm text-muted" style="margin-bottom:.5rem">
+              Create a blank Google Sheet, then paste its URL here.<br>
+              <span style="font-family:monospace;font-size:.78rem;color:var(--text-muted)">https://docs.google.com/spreadsheets/d/<strong>your-sheet-id</strong>/edit</span>
+            </div>
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+              <input class="form-control" type="url" name="sheet_url" style="flex:1;min-width:240px"
+                placeholder="https://docs.google.com/spreadsheets/d/…/edit"
+                value="{{ ('https://docs.google.com/spreadsheets/d/' + sheet_id + '/edit') if sheet_id else '' }}">
+              <button type="submit" class="btn btn-primary">Save</button>
+              {% if sheet_id %}
+                <a href="https://docs.google.com/spreadsheets/d/{{ sheet_id }}/edit" target="_blank"
+                   class="btn btn-ghost">↗ Open</a>
+              {% endif %}
+            </div>
+          </div>
+        </form>
+        {% if sheet_id %}
+          <div class="text-sm" style="color:var(--green-600)">
+            ✓ Sheet linked
+            {% if last_synced %} · Last synced: {{ last_synced_label }}{% endif %}
+          </div>
+        {% endif %}
+      </div>
+
+      <!-- Sync actions -->
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:1rem">
+        <form method="POST" action="{{ url_for('api_pull') }}"
+          onsubmit="{% if not sheet_id or not google_connected %}alert('Complete Steps 1 and 2 first.'); return false;{% else %}return confirm('This will overwrite local data from Google Sheets. Any local-only changes will be lost. Continue?');{% endif %}">
+          <button type="submit" class="btn btn-warning"
+            {% if not sheet_id or not google_connected %}title="Complete setup first" disabled{% endif %}>
+            ↓ Pull from Sheets
+          </button>
+        </form>
+        <form method="POST" action="{{ url_for('api_sync') }}"
+          onsubmit="{% if not sheet_id or not google_connected %}alert('Complete Steps 1 and 2 first.'); return false;{% endif %}">
+          <button type="submit" class="btn btn-ghost"
+            {% if not sheet_id or not google_connected %}title="Complete setup first" disabled{% endif %}>
+            ↑ Push to Sheets
+          </button>
+        </form>
+        <form method="POST" action="{{ url_for('api_refresh') }}" style="margin-left:auto">
+          <button type="submit" class="btn btn-ghost">↺ Clear Cache</button>
+        </form>
       </div>
     </div>
   </div>
