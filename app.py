@@ -1043,7 +1043,22 @@ def api_pricing():
                 rate = float(item.get(rate_key, 0) or 0)
             except (ValueError, TypeError):
                 rate = 0.0
-            # Fall back to settings default if the item has no individual rate set
+
+            # Smarter fallback chain — avoids the stale-default-rate bug:
+            # For Multi-Day: if no multi-day rate set, use the item's own Full-Day Rate
+            # (much safer than a global default that may be stale or in wrong currency).
+            # For all types: only fall through to the global default as a last resort.
+            if rate == 0.0 and rental_type == "Multi-Day":
+                try:
+                    rate = float(item.get("Full-Day Rate", 0) or 0)
+                except (ValueError, TypeError):
+                    rate = 0.0
+            if rate == 0.0 and rental_type == "Half-Day":
+                try:
+                    rate = float(item.get("Full-Day Rate", 0) or 0) * 0.5
+                except (ValueError, TypeError):
+                    rate = 0.0
+            # Global default is last resort — only used if the item truly has no rate at all
             if rate == 0.0:
                 rate = default_rate
 
