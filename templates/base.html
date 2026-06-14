@@ -69,37 +69,121 @@
   Pucon Kayak Retreat &mdash; Staff Portal &mdash; v{{ app_version }}
 </footer>
 
-<!-- Update banner — shown by JS if a newer version is available -->
-<div id="update-banner" style="display:none;position:fixed;bottom:1rem;right:1rem;z-index:9999;
-  background:#0f3d4a;color:#fff;padding:.75rem 1.1rem;border-radius:8px;
-  box-shadow:0 4px 16px rgba(0,0,0,.25);display:none;align-items:center;gap:.85rem;font-size:.875rem">
-  <span>🎉 A new version is available</span>
-  <a id="update-link" href="#" target="_blank"
-    style="background:#fff;color:#0f3d4a;font-weight:700;padding:.3rem .75rem;border-radius:5px;text-decoration:none;white-space:nowrap">
-    Download Update
-  </a>
-  <button onclick="document.getElementById('update-banner').style.display='none'"
-    style="background:none;border:none;color:rgba(255,255,255,.6);cursor:pointer;font-size:1.1rem;line-height:1;padding:0">×</button>
+<!-- ── Update banner ── -->
+<div id="update-banner" style="display:none;position:fixed;bottom:1.25rem;right:1.25rem;z-index:9999;
+  background:#0f3d4a;color:#fff;padding:1rem 1.25rem;border-radius:10px;
+  box-shadow:0 4px 24px rgba(0,0,0,.3);width:300px;font-size:.875rem">
+
+  <!-- Available state -->
+  <div id="upd-available">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.5rem">
+      <strong style="font-size:.95rem">🎉 Update available</strong>
+      <button id="upd-dismiss" style="background:none;border:none;color:rgba(255,255,255,.5);
+        cursor:pointer;font-size:1.2rem;line-height:1;padding:0;margin-left:.5rem">×</button>
+    </div>
+    <div id="upd-notes" style="color:rgba(255,255,255,.75);font-size:.8rem;margin-bottom:.85rem"></div>
+    <div style="display:flex;gap:.5rem">
+      <button id="upd-install-btn" onclick="updDownload()"
+        style="flex:1;background:#fff;color:#0f3d4a;font-weight:700;border:none;
+        padding:.45rem .75rem;border-radius:6px;cursor:pointer;font-size:.85rem">
+        Install Update
+      </button>
+      <span id="upd-version-tag" style="align-self:center;font-size:.72rem;color:rgba(255,255,255,.45)"></span>
+    </div>
+  </div>
+
+  <!-- Downloading state -->
+  <div id="upd-downloading" style="display:none">
+    <div style="margin-bottom:.6rem;font-weight:600">⬇ Downloading update…</div>
+    <div style="background:rgba(255,255,255,.15);border-radius:4px;height:6px;overflow:hidden">
+      <div id="upd-bar" style="background:#4ade80;height:100%;width:0%;transition:width .3s ease"></div>
+    </div>
+    <div id="upd-pct" style="margin-top:.4rem;font-size:.78rem;color:rgba(255,255,255,.6)">0%</div>
+  </div>
+
+  <!-- Ready to install state -->
+  <div id="upd-ready" style="display:none">
+    <div style="font-weight:600;margin-bottom:.5rem">✅ Downloaded — ready to install</div>
+    <div style="font-size:.78rem;color:rgba(255,255,255,.7);margin-bottom:.85rem">
+      The app will close, update, and reopen automatically.<br>Your data is not affected.
+    </div>
+    <button onclick="updInstall()"
+      style="width:100%;background:#4ade80;color:#0f3d4a;font-weight:700;border:none;
+      padding:.5rem;border-radius:6px;cursor:pointer;font-size:.9rem">
+      Restart &amp; Install
+    </button>
+  </div>
+
+  <!-- Error state -->
+  <div id="upd-error" style="display:none">
+    <div style="color:#fca5a5;font-weight:600;margin-bottom:.35rem">⚠ Update failed</div>
+    <div id="upd-error-msg" style="font-size:.78rem;color:rgba(255,255,255,.7)"></div>
+  </div>
 </div>
+
 <script>
 (function(){
-  // Check for updates once per session — polls a tiny JSON file you host anywhere
-  const VERSION_URL = 'https://puconkayakretreat.com/app/version.json';
-  const CURRENT     = '{{ app_version }}';
-  const DISMISSED   = 'pkr_update_dismissed_' + CURRENT;
-  if (sessionStorage.getItem(DISMISSED)) return;
-  fetch(VERSION_URL, { cache: 'no-store' })
+  const CURRENT  = '{{ app_version }}';
+  const KEY      = 'pkr_upd_dismissed_' + CURRENT;
+  if (sessionStorage.getItem(KEY)) return;
+
+  let _downloadUrl = '';
+
+  function show(id) {
+    ['upd-available','upd-downloading','upd-ready','upd-error'].forEach(i => {
+      document.getElementById(i).style.display = i === id ? '' : 'none';
+    });
+    document.getElementById('update-banner').style.display = '';
+  }
+
+  // Check for updates on every page load (silently)
+  fetch('/api/update/check', { cache: 'no-store' })
     .then(r => r.json())
     .then(data => {
-      if (data.version && data.version !== CURRENT) {
-        const banner = document.getElementById('update-banner');
-        document.getElementById('update-link').href = data.download_url || VERSION_URL;
-        banner.style.display = 'flex';
-      }
+      if (!data.update_available) return;
+      _downloadUrl = data.download_url || '';
+      document.getElementById('upd-notes').textContent = data.release_notes || '';
+      document.getElementById('upd-version-tag').textContent = 'v' + data.version;
+      show('upd-available');
     })
-    .catch(() => {}); // silently ignore — no internet, wrong URL, etc.
-  document.getElementById('update-banner')?.querySelector('button')
-    ?.addEventListener('click', () => sessionStorage.setItem(DISMISSED, '1'));
+    .catch(() => {});
+
+  document.getElementById('upd-dismiss').addEventListener('click', () => {
+    document.getElementById('update-banner').style.display = 'none';
+    sessionStorage.setItem(KEY, '1');
+  });
+
+  window.updDownload = function() {
+    show('upd-downloading');
+    fetch('/api/update/download', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ download_url: _downloadUrl }),
+    });
+    // Poll progress
+    const poll = setInterval(() => {
+      fetch('/api/update/progress')
+        .then(r => r.json())
+        .then(d => {
+          document.getElementById('upd-bar').style.width = d.progress + '%';
+          document.getElementById('upd-pct').textContent = d.progress + '%';
+          if (d.status === 'ready') {
+            clearInterval(poll);
+            show('upd-ready');
+          } else if (d.status === 'error') {
+            clearInterval(poll);
+            document.getElementById('upd-error-msg').textContent = d.error;
+            show('upd-error');
+          }
+        });
+    }, 800);
+  };
+
+  window.updInstall = function() {
+    document.getElementById('upd-ready').innerHTML =
+      '<div style="text-align:center;padding:.5rem 0">🔄 Installing… app will relaunch shortly.</div>';
+    fetch('/api/update/install', { method: 'POST' });
+  };
 })();
 </script>
 

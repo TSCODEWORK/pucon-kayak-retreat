@@ -9,6 +9,7 @@ import calendar as cal_module
 import functools
 import threading
 import time
+import subprocess
 import urllib.request
 from pathlib import Path
 from datetime import datetime, date, timedelta
@@ -1515,6 +1516,140 @@ def apply_discount(res_id):
     except Exception as e:
         flash(f"Error applying discount: {e}", "error")
     return redirect(url_for("reservation_detail", res_id=res_id))
+
+
+# ── Auto-update ───────────────────────────────────────────────────────────────
+
+VERSION_JSON_URL = (
+    "https://raw.githubusercontent.com/TSCODEWORK/pucon-kayak-retreat"
+    "/master/version.json"
+)
+
+# Shared download state — written by background thread, read by /api/update/progress
+_update_state: dict = {"status": "idle", "progress": 0, "error": ""}
+
+
+@app.route("/api/update/check")
+@login_required
+def api_update_check():
+    """Return latest version info from GitHub."""
+    try:
+        req = urllib.request.Request(
+            VERSION_JSON_URL,
+            headers={"User-Agent": "PKR-App/updater", "Cache-Control": "no-cache"},
+        )
+        with urllib.request.urlopen(req, timeout=6) as r:
+            data = json.loads(r.read())
+        data["current_version"] = APP_VERSION
+        data["update_available"] = data.get("version", "") != APP_VERSION
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e), "current_version": APP_VERSION}), 500
+
+
+@app.route("/api/update/download", methods=["POST"])
+@login_required
+def api_update_download():
+    """Download the new DMG in a background thread and track progress."""
+    global _update_state
+    download_url = request.json.get("download_url", "")
+    if not download_url:
+        return jsonify({"error": "No download URL provided"}), 400
+    if _update_state.get("status") == "downloading":
+        return jsonify({"status": "already_downloading"}), 200
+
+    _update_state = {"status": "downloading", "progress": 0, "error": "", "path": ""}
+
+    def _do_download():
+        global _update_state
+        import tempfile
+        tmp = tempfile.mktemp(suffix=".dmg", prefix="pkr_update_")
+        try:
+            req = urllib.request.Request(
+                download_url, headers={"User-Agent": "PKR-App/updater"}
+            )
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                total = int(resp.headers.get("Content-Length", 0))
+                downloaded = 0
+                chunk = 65536  # 64 KB chunks
+                with open(tmp, "wb") as f:
+                    while True:
+                        buf = resp.read(chunk)
+                        if not buf:
+                            break
+                        f.write(buf)
+                        downloaded += len(buf)
+                        if total:
+                            _update_state["progress"] = int(downloaded / total * 100)
+            _update_state["status"] = "ready"
+            _update_state["progress"] = 100
+            _update_state["path"] = tmp
+        except Exception as e:
+            _update_state["status"] = "error"
+            _update_state["error"] = str(e)
+            try:
+                os.remove(tmp)
+            except Exception:
+                pass
+
+    threading.Thread(target=_do_download, daemon=True).start()
+    return jsonify({"status": "started"})
+
+
+@app.route("/api/update/progress")
+@login_required
+def api_update_progress():
+    """Poll download progress."""
+    return jsonify(_update_state)
+
+
+@app.route("/api/update/install", methods=["POST"])
+@login_required
+def api_update_install():
+    """Mount the downloaded DMG, write an updater script, launch it, then quit."""
+    import signal, stat
+
+    dmg_path = _update_state.get("path", "")
+    if not dmg_path or not os.path.exists(dmg_path):
+        return jsonify({"error": "DMG not downloaded yet"}), 400
+
+    mount_point = "/tmp/pkr_update_vol"
+
+    # Shell script runs *after* this process exits:
+    #   1. Waits for the app to quit
+    #   2. Copies the new .app over the old one
+    #   3. Detaches the DMG volume
+    #   4. Relaunches the app
+    script = f"""#!/bin/bash
+sleep 3
+hdiutil attach "{dmg_path}" -mountpoint "{mount_point}" -nobrowse -quiet 2>/dev/null
+if [ -d "{mount_point}/PuconKayakRetreat.app" ]; then
+    cp -r "{mount_point}/PuconKayakRetreat.app" /Applications/PuconKayakRetreat.app
+fi
+hdiutil detach "{mount_point}" -quiet 2>/dev/null
+rm -f "{dmg_path}"
+open /Applications/PuconKayakRetreat.app
+"""
+    script_path = "/tmp/pkr_updater.sh"
+    with open(script_path, "w") as f:
+        f.write(script)
+    os.chmod(script_path, stat.S_IRWXU)
+
+    # Launch updater detached so it survives this process quitting
+    subprocess.Popen(
+        ["bash", script_path],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+    # Quit Flask (and therefore the pywebview window) after a moment
+    def _quit():
+        time.sleep(1.2)
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    threading.Thread(target=_quit, daemon=True).start()
+    return jsonify({"status": "installing"})
 
 
 if __name__ == "__main__":
