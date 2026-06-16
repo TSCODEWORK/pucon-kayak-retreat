@@ -21,6 +21,7 @@ import time
 import subprocess
 import urllib.request
 from pathlib import Path
+from collections import Counter
 from datetime import datetime, date, timedelta
 from flask import (
     Flask, render_template, request, redirect, url_for,
@@ -35,7 +36,7 @@ from sync import SheetsSyncer
 
 log = logging.getLogger(__name__)
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 
 # OAuth2 over HTTP is fine for localhost (Desktop app running on the user's machine)
 os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
@@ -81,6 +82,36 @@ VALID_TRANSITIONS = {
 def _split_item_ids(s) -> list:
     """Split a comma-separated Item IDs string into a clean list (P-8)."""
     return [i.strip() for i in str(s or "").split(",") if i.strip()]
+
+
+def _compute_item_availability(inventory, reservations, start_str, end_str, exclude_res_id=None) -> dict:
+    """Return {item_id: units_available} for the given window, excluding one
+    reservation's own usage (so its edit panel doesn't show its own gear as
+    unavailable). Used to size the quantity steppers in the edit panel."""
+    qty_map = {}
+    for i in inventory:
+        try:
+            qty_map[str(i.get("Item ID"))] = 0 if i.get("Status") == "Maintenance" else int(i.get("Quantity") or 1)
+        except (TypeError, ValueError):
+            qty_map[str(i.get("Item ID"))] = 1
+
+    start_dt = _parse_dt(start_str)
+    end_dt = _parse_dt(end_str)
+    booked = Counter()
+    if start_dt and end_dt:
+        for r in reservations:
+            if r.get("Reservation Status") in ("Canceled", "Returned"):
+                continue
+            if exclude_res_id and str(r.get("Reservation ID")) == str(exclude_res_id):
+                continue
+            rs = _parse_dt(r.get("Start Date & Time", ""))
+            re_ = _parse_dt(r.get("End Date & Time", ""))
+            if not rs or not re_:
+                continue
+            if start_dt < re_ and end_dt > rs:
+                booked.update(_split_item_ids(r.get("Item IDs", "")))
+
+    return {iid: max(0, qty - booked.get(iid, 0)) for iid, qty in qty_map.items()}
 
 
 def _fetch_clp_rate() -> float:
@@ -499,7 +530,22 @@ def reservations():
 
 # ── Shared form validation helper (items 34-35) ───────────────────────────────
 
-def _validate_reservation_form(form):
+def _reconstruct_item_ids_from_qty_form(form) -> list:
+    """Rebuild a flat (possibly repeated) item_ids list from the edit panel's
+    quantity-stepper inputs: parallel item_qty_id / item_qty_val lists."""
+    ids = form.getlist("item_qty_id")
+    vals = form.getlist("item_qty_val")
+    item_ids = []
+    for iid, val in zip(ids, vals):
+        try:
+            qty = max(0, int(val))
+        except (TypeError, ValueError):
+            qty = 0
+        item_ids.extend([iid] * qty)
+    return item_ids
+
+
+def _validate_reservation_form(form, item_ids=None):
     """Validate the fields common to both 'create' and 'edit' reservation forms.
 
     Returns (errors, parsed) where:
@@ -510,7 +556,9 @@ def _validate_reservation_form(form):
     start_str = form.get("start_datetime", "").strip()
     end_str   = form.get("end_datetime",   "").strip()
 
-    if not form.getlist("item_ids"):
+    if item_ids is None:
+        item_ids = form.getlist("item_ids")
+    if not item_ids:
         errors.append("Select at least one item.")
     if not start_str:
         errors.append("Start date/time is required.")
@@ -716,8 +764,8 @@ def reservation_detail(res_id):
                 flash(f"Status updated to {new_status}.", "success")
 
             elif action == "update_details":
-                item_ids = request.form.getlist("item_ids")
-                edit_errors, parsed = _validate_reservation_form(request.form)
+                item_ids = _reconstruct_item_ids_from_qty_form(request.form)
+                edit_errors, parsed = _validate_reservation_form(request.form, item_ids=item_ids)
                 start_str = parsed["start_str"]
                 end_str   = parsed["end_str"]
                 pay_amt   = parsed["pay_amt"]
@@ -737,12 +785,21 @@ def reservation_detail(res_id):
                     inv2 = db.get_inventory()
                     item_ids2 = _split_item_ids(res2.get("Item IDs",""))
                     reserved_items2 = [i for i in inv2 if str(i.get("Item ID")) in item_ids2]
+                    # Preserve the staff member's attempted equipment quantities (not
+                    # the saved ones) so the steppers still show what they typed.
+                    edit_item_qtys = dict(Counter(item_ids))
+                    item_availability2 = _compute_item_availability(
+                        inv2, all_res2, start_str or res2.get("Start Date & Time",""),
+                        end_str or res2.get("End Date & Time",""), exclude_res_id=res_id,
+                    )
                     return render_template(
                         "reservation_detail.html",
                         reservation=res2,
                         inventory=inv2,
                         reserved_items=reserved_items2,
                         item_ids=item_ids2,
+                        item_availability=item_availability2,
+                        edit_item_qtys=edit_item_qtys,
                         discount_pct=0, discount_days=0, has_kayak_items=False,
                         edit_open=True,
                         edit_form_data=request.form.to_dict(),
@@ -782,6 +839,11 @@ def reservation_detail(res_id):
             return redirect(url_for("reservations"))
         item_ids = _split_item_ids(reservation.get("Item IDs", ""))
         reserved_items = [i for i in inventory if str(i.get("Item ID")) in item_ids]
+        item_availability = _compute_item_availability(
+            inventory, all_res,
+            reservation.get("Start Date & Time", ""), reservation.get("End Date & Time", ""),
+            exclude_res_id=res_id,
+        )
 
         # F-6: discount tier in a single shared helper (also used by apply_discount)
         discount_pct = _kayak_discount_pct(reservation, reserved_items)
@@ -799,6 +861,8 @@ def reservation_detail(res_id):
             inventory=inventory,
             reserved_items=reserved_items,
             item_ids=item_ids,
+            item_availability=item_availability,
+            edit_item_qtys=dict(Counter(item_ids)),
             discount_pct=discount_pct,
             discount_days=discount_days,
             has_kayak_items=has_kayak_items,
@@ -1150,13 +1214,15 @@ def api_availability():
 def api_pricing():
     try:
         raw = request.args.get("items", "")
-        item_ids = _split_item_ids(raw)
+        item_ids = _split_item_ids(raw)  # may contain repeated IDs (qty > 1)
+        item_counts = Counter(item_ids)
         rental_type = request.args.get("type", "Hourly")
         start_str = request.args.get("start", "")
         end_str = request.args.get("end", "")
 
         inventory = db.get_inventory()
-        items = [i for i in inventory if str(i.get("Item ID")) in item_ids]
+        inv_by_id = {str(i.get("Item ID")): i for i in inventory}
+        items = [inv_by_id[iid] for iid in item_counts if iid in inv_by_id]
 
         rate_key_map = {
             "Hourly": "Hourly Rate",
@@ -1213,29 +1279,39 @@ def api_pricing():
             if rate == 0.0:
                 rate = default_rate
 
+            qty = item_counts.get(str(item.get("Item ID")), 1)
             if rental_type == "Hourly":
-                subtotal = rate * duration_hours
+                subtotal = rate * duration_hours * qty
             elif rental_type == "Multi-Day":
-                subtotal = rate * duration_days
+                subtotal = rate * duration_days * qty
             else:
-                subtotal = rate
+                subtotal = rate * qty
 
             total += subtotal
             breakdown.append({
                 "item_id": item.get("Item ID"),
                 "name": item.get("Name/Description"),
+                "qty": qty,
                 "rate": rate,
-                "subtotal": round(subtotal, 2),
+                "subtotal": subtotal,  # converted to display currency below
             })
 
-        # Convert total from stored currency to display currency
+        # Convert total + each breakdown row from stored currency to display currency.
+        # Previously only `total` was converted, leaving breakdown rows showing raw
+        # CLP-scale numbers with a "$" prefix (e.g. "$330000.00" next to a $1736 total).
         stored = get_rate_currency()
         display = get_display_currency()
-        display_total = total
-        if stored == "CLP" and display == "USD":
-            display_total = total / _get_clp_rate()
-        elif stored == "USD" and display == "CLP":
-            display_total = total * _get_clp_rate()
+
+        def _convert(amount):
+            if stored == "CLP" and display == "USD":
+                return amount / _get_clp_rate()
+            if stored == "USD" and display == "CLP":
+                return amount * _get_clp_rate()
+            return amount
+
+        display_total = _convert(total)
+        for b in breakdown:
+            b["subtotal"] = round(_convert(b["subtotal"]), 2)
 
         return jsonify({
             "total": round(display_total, 2),
