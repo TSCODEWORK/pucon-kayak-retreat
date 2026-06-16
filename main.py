@@ -11,6 +11,7 @@ import os
 import socket
 import threading
 import time
+import urllib.request
 from pathlib import Path
 
 
@@ -21,13 +22,10 @@ BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
 os.environ["PKR_BASE_DIR"] = str(BASE_DIR)
 
 # Tell db.py where to store rental.db (set before app.py is imported)
-APP_SUPPORT_EARLY = Path.home() / "Library" / "Application Support" / "PuconKayakRetreat"
-os.environ["PKR_DB_PATH"] = str(APP_SUPPORT_EARLY)
-
-
-# ── User data directory ───────────────────────────────────────────────────────
+# P-9: single constant, mkdir called immediately.
 APP_SUPPORT = Path.home() / "Library" / "Application Support" / "PuconKayakRetreat"
 APP_SUPPORT.mkdir(parents=True, exist_ok=True)
+os.environ["PKR_DB_PATH"] = str(APP_SUPPORT)
 
 ENV_PATH = APP_SUPPORT / ".env"
 if not ENV_PATH.exists():
@@ -66,8 +64,13 @@ def _run_flask():
 _flask_thread = threading.Thread(target=_run_flask, daemon=True)
 _flask_thread.start()
 
-# Give Flask a moment to bind
-time.sleep(1.5)
+# Wait until Flask is actually responding (up to 15 seconds)
+for _ in range(150):
+    try:
+        urllib.request.urlopen(f"http://127.0.0.1:{PORT}/login", timeout=1)
+        break
+    except Exception:
+        time.sleep(0.1)
 
 
 # ── Open native macOS window ──────────────────────────────────────────────────

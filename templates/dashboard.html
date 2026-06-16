@@ -134,7 +134,7 @@
   <div class="card" style="grid-column: 1 / -1">
     <div class="card-header">
       <h3 style="color:var(--red-600)">⚠️ Overdue Returns</h3>
-      <span class="badge badge-canceled">{{ overdue | length }}</span>
+      <span class="badge badge-unpaid">{{ overdue | length }}</span>
     </div>
     <div class="card-body">
       <div class="today-list">
@@ -213,88 +213,84 @@
 </div>
 
 <!-- ══════════════════════════════════════════════════════════
-     MONTH VIEW
+     MONTH VIEW  (JS-driven navigable calendar)
 ══════════════════════════════════════════════════════════ -->
 {% elif view == 'month' %}
 
-<!-- Month stat cards -->
-<div class="stats-grid" style="margin-bottom:1.25rem">
+<!-- Stats row (updated by JS as month changes) -->
+<div class="stats-grid" style="margin-bottom:1.25rem" id="month-stats-grid">
   <div class="stat-card">
     <div class="stat-label">Total Reservations</div>
-    <div class="stat-value teal">{{ month_stats.total_reservations }}</div>
-    <div class="stat-sub">{{ month_stats.month_label }}</div>
+    <div class="stat-value teal" id="ms-total">—</div>
+    <div class="stat-sub" id="ms-label">Loading…</div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Busiest Day</div>
-    <div class="stat-value amber">{{ month_stats.busiest_day }}</div>
-    <div class="stat-sub">{{ month_stats.busiest_count }} reservation{{ 's' if month_stats.busiest_count != 1 }}</div>
+    <div class="stat-value amber" id="ms-busiest-day">—</div>
+    <div class="stat-sub" id="ms-busiest-count"></div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Items Rented</div>
-    <div class="stat-value teal">{{ month_stats.items_rented }}</div>
+    <div class="stat-value teal" id="ms-items">—</div>
     <div class="stat-sub">unique pieces of gear</div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Fleet Utilization</div>
-    <div class="stat-value green">{{ month_stats.utilization }}%</div>
-    <div class="stat-sub">of inventory rented this month</div>
+    <div class="stat-value green" id="ms-util">—</div>
+    <div class="stat-sub">of {{ total_items }} items in fleet</div>
   </div>
 </div>
 
-<!-- Calendar grid -->
-<div class="card">
-  <div class="card-header"><h3>{{ month_stats.month_label }} — Reservation Activity</h3></div>
-  <div class="card-body">
-    {% set first_weekday = month_days[0].date.weekday() if month_days else 0 %}
-    <!-- weekday header: Mon–Sun -->
-    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:.25rem;margin-bottom:.5rem">
-      {% for day_name in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
-        <div style="text-align:center;font-size:.75rem;font-weight:600;color:var(--text-muted);padding:.25rem 0">{{ day_name }}</div>
-      {% endfor %}
+<!-- Calendar card -->
+<div style="display:grid;grid-template-columns:1fr 300px;gap:1.25rem;align-items:start" id="month-layout">
+
+  <div class="card">
+    <!-- Nav header -->
+    <div class="card-header" style="display:flex;align-items:center;gap:.75rem">
+      <button class="btn btn-ghost btn-sm" onclick="calNav(-1)">← Prev</button>
+      <h3 id="cal-month-title" style="flex:1;text-align:center;margin:0">Loading…</h3>
+      <button class="btn btn-ghost btn-sm" onclick="calGoToday()">Today</button>
+      <button class="btn btn-ghost btn-sm" onclick="calNav(1)">Next →</button>
     </div>
-    <!-- calendar cells -->
-    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:.25rem">
-      <!-- empty offset cells for first week -->
-      {% for _ in range(first_weekday) %}
-        <div></div>
-      {% endfor %}
-      {% for d in month_days %}
-        {% set intensity = '' %}
-        {% if d.count == 0 %}{% set intensity = '' %}
-        {% elif d.count == 1 %}{% set intensity = 'var(--teal-100,#ccfbf1)' %}
-        {% elif d.count <= 3 %}{% set intensity = 'var(--teal-200,#99f6e4)' %}
-        {% else %}{% set intensity = 'var(--teal-400,#2dd4bf)' %}
-        {% endif %}
-        {% set cell_url = url_for('reservations', date=d.date.strftime('%Y-%m-%d')) if d.count > 0 else '' %}
-        <{% if cell_url %}a href="{{ cell_url }}"{% else %}div{% endif %} style="
-          display:block;
-          text-align:center;
-          padding:.4rem .2rem;
-          border-radius:var(--radius-sm);
-          border:1px solid {% if d.is_today %}var(--brand-dark){% else %}var(--border){% endif %};
-          background:{{ intensity if d.count > 0 else ('var(--slate-50)' if not d.is_past else 'transparent') }};
-          font-size:.8rem;
-          text-decoration:none;
-          {% if d.count > 0 %}cursor:pointer;{% endif %}
-          {% if d.is_today %}font-weight:700;{% endif %}
-          {% if d.is_past and not d.is_today %}opacity:.65;{% endif %}
-        ">
-          <div style="color:{% if d.is_today %}var(--brand-dark){% else %}var(--text){% endif %}">{{ d.day_num }}</div>
-          {% if d.count > 0 %}
-            <div style="font-size:.65rem;color:var(--teal-700,#0f766e);font-weight:600;margin-top:.1rem">{{ d.count }}</div>
-          {% endif %}
-        </{% if cell_url %}a{% else %}div{% endif %}>
-      {% endfor %}
-    </div>
-    <div style="margin-top:.75rem;display:flex;gap:1rem;font-size:.75rem;color:var(--text-muted);align-items:center">
-      <span style="display:inline-flex;align-items:center;gap:.3rem"><span style="width:12px;height:12px;border-radius:2px;background:var(--teal-100,#ccfbf1);border:1px solid var(--border);display:inline-block"></span> 1 reservation</span>
-      <span style="display:inline-flex;align-items:center;gap:.3rem"><span style="width:12px;height:12px;border-radius:2px;background:var(--teal-200,#99f6e4);border:1px solid var(--border);display:inline-block"></span> 2–3</span>
-      <span style="display:inline-flex;align-items:center;gap:.3rem"><span style="width:12px;height:12px;border-radius:2px;background:var(--teal-400,#2dd4bf);display:inline-block"></span> 4+</span>
+    <div class="card-body" style="padding:.75rem">
+      <!-- Day-of-week headers -->
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:.2rem;margin-bottom:.3rem">
+        {% for n in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
+          <div style="text-align:center;font-size:.72rem;font-weight:700;color:var(--text-muted);padding:.2rem 0;letter-spacing:.03em">{{ n }}</div>
+        {% endfor %}
+      </div>
+      <!-- Calendar cells rendered by JS -->
+      <div id="cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:.2rem"></div>
+      <!-- Legend -->
+      <div style="margin-top:.75rem;display:flex;gap:1rem;font-size:.72rem;color:var(--text-muted);align-items:center;flex-wrap:wrap">
+        <span style="display:inline-flex;align-items:center;gap:.3rem"><span style="width:11px;height:11px;border-radius:2px;background:#ccfbf1;border:1px solid var(--border);display:inline-block"></span> 1</span>
+        <span style="display:inline-flex;align-items:center;gap:.3rem"><span style="width:11px;height:11px;border-radius:2px;background:#5eead4;display:inline-block"></span> 2–3</span>
+        <span style="display:inline-flex;align-items:center;gap:.3rem"><span style="width:11px;height:11px;border-radius:2px;background:#14b8a6;display:inline-block"></span> 4+</span>
+        <span style="display:inline-flex;align-items:center;gap:.3rem;margin-left:auto"><span style="width:11px;height:11px;border-radius:50%;background:var(--brand);display:inline-block"></span> Today</span>
+      </div>
     </div>
   </div>
+
+  <!-- Day detail panel -->
+  <div class="card" id="cal-detail-panel" style="min-height:200px">
+    <div class="card-header">
+      <h3 id="cal-detail-title" style="font-size:.9rem">Click a day to see reservations</h3>
+      <a id="cal-detail-newbooking" href="{{ url_for('new_reservation') }}" class="btn btn-primary btn-sm" style="display:none">+ New</a>
+    </div>
+    <div class="card-body" id="cal-detail-body">
+      <div class="empty-state" style="padding:1.5rem 0">Select any day on the calendar.</div>
+    </div>
+  </div>
+
 </div>
 
 {% endif %}
+
+<!-- Reservation data for JS calendar -->
+<script id="dash-cal-data" type="application/json">{{ calendar_reservations | tojson }}</script>
+<script id="dash-meta" type="application/json">{{ {"totalItems": total_items, "today": today.strftime("%Y-%m-%d")} | tojson }}</script>
+<script id="dash-item-names" type="application/json">{{ item_name_map | tojson }}</script>
+
 {% endblock %}
 
 {% block scripts %}
@@ -304,4 +300,281 @@ function refreshData() {
     .then(() => window.location.reload());
 }
 </script>
+
+{% if view == 'month' %}
+<script>
+(function() {
+  const reservations = JSON.parse(document.getElementById('dash-cal-data').textContent);
+  const meta = JSON.parse(document.getElementById('dash-meta').textContent);
+  const ITEM_NAMES = JSON.parse(document.getElementById('dash-item-names').textContent);
+  const TOTAL_ITEMS = meta.totalItems || 0;
+  const todayStr = meta.today;
+
+  const MONTHS = ['January','February','March','April','May','June',
+                  'July','August','September','October','November','December'];
+  const SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  // Parse "YYYY-MM-DD HH:MM:SS" or "YYYY-MM-DDTHH:MM" → date string "YYYY-MM-DD"
+  function toDateStr(s) {
+    if (!s) return null;
+    return s.replace('T',' ').slice(0,10);
+  }
+
+  // All dates a reservation spans, returned as Set of "YYYY-MM-DD"
+  function spanDays(r) {
+    const s = toDateStr(r.start), e = toDateStr(r.end) || s;
+    if (!s) return new Set();
+    const result = new Set();
+    let cur = new Date(s + 'T00:00:00');
+    const end = new Date(e + 'T00:00:00');
+    while (cur <= end) {
+      result.add(cur.toISOString().slice(0,10));
+      cur = new Date(cur.getTime() + 86400000);
+    }
+    return result;
+  }
+
+  // Build a map: "YYYY-MM-DD" → [reservation, ...]
+  function buildDayMap() {
+    const map = {};
+    for (const r of reservations) {
+      for (const d of spanDays(r)) {
+        (map[d] || (map[d] = [])).push(r);
+      }
+    }
+    return map;
+  }
+  const dayMap = buildDayMap();
+
+  // Current view state
+  const todayDate = new Date(todayStr + 'T00:00:00');
+  let viewYear = todayDate.getFullYear();
+  let viewMonth = todayDate.getMonth(); // 0-indexed
+
+  function daysInMonth(y, m) {
+    return new Date(y, m + 1, 0).getDate();
+  }
+  function firstWeekday(y, m) {
+    // 0=Mon … 6=Sun (ISO)
+    const d = new Date(y, m, 1).getDay();
+    return (d + 6) % 7;
+  }
+  function dateStr(y, m, d) {
+    return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  }
+
+  function bgColor(count) {
+    if (count === 0) return '';
+    if (count === 1) return '#ccfbf1';
+    if (count <= 3)  return '#5eead4';
+    return '#14b8a6';
+  }
+  function textColor(count) {
+    return count >= 4 ? '#fff' : '';
+  }
+
+  function computeMonthStats(y, m) {
+    const prefix = `${y}-${String(m+1).padStart(2,'0')}-`;
+    let total = 0;
+    let busiestDay = null, busiestCount = 0;
+    const itemSet = new Set();
+
+    for (const [key, list] of Object.entries(dayMap)) {
+      if (!key.startsWith(prefix)) continue;
+      // de-dupe reservations per day (a reservation spanning multiple days only counted once in total)
+    }
+
+    // Count unique reservations that START or OVERLAP this month
+    const seen = new Set();
+    for (const [key, list] of Object.entries(dayMap)) {
+      if (!key.startsWith(prefix)) continue;
+      const unique = list.filter(r => !seen.has(r.id));
+      // For total, count reservations whose START date is this month
+      for (const r of unique) {
+        const rs = toDateStr(r.start) || '';
+        if (rs.startsWith(prefix) && !seen.has(r.id)) {
+          seen.add(r.id);
+          total++;
+          for (const id of (r.items || '').split(',').map(s=>s.trim()).filter(Boolean)) itemSet.add(id);
+        }
+      }
+      if (list.length > busiestCount) { busiestCount = list.length; busiestDay = key; }
+    }
+
+    const util = TOTAL_ITEMS > 0 ? Math.round(itemSet.size / TOTAL_ITEMS * 100) : 0;
+    return { total, busiestDay, busiestCount, itemCount: itemSet.size, util };
+  }
+
+  function render() {
+    const y = viewYear, m = viewMonth;
+    const days = daysInMonth(y, m);
+    const offset = firstWeekday(y, m);
+    const todayKey = todayStr;
+
+    // Update title
+    document.getElementById('cal-month-title').textContent = `${MONTHS[m]} ${y}`;
+
+    // Update stats
+    const stats = computeMonthStats(y, m);
+    document.getElementById('ms-total').textContent = stats.total;
+    document.getElementById('ms-label').textContent = `${SHORT_MONTHS[m]} ${y}`;
+    if (stats.busiestDay) {
+      const bd = new Date(stats.busiestDay + 'T12:00:00');
+      document.getElementById('ms-busiest-day').textContent = `${SHORT_MONTHS[bd.getMonth()]} ${bd.getDate()}`;
+      document.getElementById('ms-busiest-count').textContent = `${stats.busiestCount} reservation${stats.busiestCount !== 1 ? 's' : ''}`;
+    } else {
+      document.getElementById('ms-busiest-day').textContent = '—';
+      document.getElementById('ms-busiest-count').textContent = 'none this month';
+    }
+    document.getElementById('ms-items').textContent = stats.itemCount;
+    document.getElementById('ms-util').textContent = stats.util + '%';
+
+    // Build grid HTML
+    let html = '';
+    // Empty offset cells
+    for (let i = 0; i < offset; i++) html += '<div></div>';
+
+    for (let d = 1; d <= days; d++) {
+      const key = dateStr(y, m, d);
+      const list = dayMap[key] || [];
+      const count = list.length;
+      const isToday = key === todayKey;
+      const isPast = key < todayKey;
+      const bg = bgColor(count);
+      const tc = textColor(count);
+
+      const border = isToday
+        ? '2px solid var(--brand-dark)'
+        : '1px solid var(--border)';
+      const fontWeight = isToday ? '800' : count > 0 ? '600' : '400';
+      const opacity = isPast && !isToday ? '.6' : '1';
+      const cursor = 'pointer';
+
+      html += `<div
+        onclick="selectDay('${key}')"
+        style="
+          text-align:center;padding:.45rem .15rem;border-radius:5px;
+          border:${border};
+          background:${bg || (isToday ? 'var(--brand-50)' : '')};
+          font-size:.82rem;color:${tc || (isToday ? 'var(--brand-dark)' : 'var(--text)')};
+          font-weight:${fontWeight};opacity:${opacity};cursor:${cursor};
+          transition:transform .1s,box-shadow .1s;
+          position:relative;
+        "
+        onmouseover="this.style.transform='scale(1.07)';this.style.boxShadow='0 2px 8px rgba(0,0,0,.1)'"
+        onmouseout="this.style.transform='';this.style.boxShadow=''"
+        title="${count > 0 ? count + ' reservation' + (count!==1?'s':'') : ''}"
+      >
+        <div>${d}</div>
+        ${count > 0 ? `<div style="font-size:.62rem;font-weight:700;margin-top:.05rem;color:${tc || 'var(--teal-700,#0f766e)'}">${count}</div>` : ''}
+      </div>`;
+    }
+    document.getElementById('cal-grid').innerHTML = html;
+  }
+
+  window.calNav = function(dir) {
+    viewMonth += dir;
+    if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+    if (viewMonth < 0)  { viewMonth = 11; viewYear--; }
+    // Clear detail panel when navigating
+    document.getElementById('cal-detail-title').textContent = 'Click a day to see reservations';
+    document.getElementById('cal-detail-body').innerHTML = '<div class="empty-state" style="padding:1.5rem 0">Select any day on the calendar.</div>';
+    document.getElementById('cal-detail-newbooking').style.display = 'none';
+    render();
+  };
+
+  window.calGoToday = function() {
+    viewYear = todayDate.getFullYear();
+    viewMonth = todayDate.getMonth();
+    render();
+    selectDay(todayStr);
+  };
+
+  window.selectDay = function(key) {
+    const list = dayMap[key] || [];
+    const d = new Date(key + 'T12:00:00');
+    const label = d.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+
+    document.getElementById('cal-detail-title').textContent =
+      list.length ? `${list.length} reservation${list.length !== 1 ? 's' : ''} · ${label}` : label;
+
+    const nbBtn = document.getElementById('cal-detail-newbooking');
+    nbBtn.href = `/reservations/new?start=${key}`;
+    nbBtn.style.display = '';
+
+    const fmt = s => {
+      if (!s) return '';
+      const dt = new Date(s.replace(' ','T'));
+      return isNaN(dt) ? s : dt.toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    };
+
+    const statusClass = { 'Upcoming':'badge-upcoming','Checked Out':'badge-checked-out','Returned':'badge-returned','Canceled':'badge-canceled' };
+
+    if (!list.length) {
+      document.getElementById('cal-detail-body').innerHTML =
+        '<div class="empty-state" style="padding:1.5rem 0">No reservations on this day.</div>';
+      return;
+    }
+
+    // Equipment reserved this day — flatten item IDs across all reservations,
+    // grouping repeated IDs within the same booking into a quantity count.
+    const equipRows = [];
+    let totalUnits = 0;
+    for (const r of list) {
+      const counts = {};
+      for (const id of (r.items || '').split(',').map(s => s.trim()).filter(Boolean)) {
+        counts[id] = (counts[id] || 0) + 1;
+      }
+      for (const [id, qty] of Object.entries(counts)) {
+        equipRows.push({ id, qty, name: ITEM_NAMES[id] || id, customer: r.customer, resId: r.id, status: r.status });
+        totalUnits += qty;
+      }
+    }
+    equipRows.sort((a, b) => a.name.localeCompare(b.name));
+
+    let html = '';
+
+    if (equipRows.length) {
+      html += `<div style="margin-bottom:1rem">
+        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:.5rem">
+          🛶 Equipment Reserved (${totalUnits})
+        </div>
+        <div style="display:flex;flex-direction:column;gap:.35rem">`;
+      for (const e of equipRows) {
+        html += `
+          <a href="/reservations/${e.resId}" style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;
+            padding:.4rem .6rem;background:var(--slate-50);border-radius:6px;text-decoration:none;color:inherit;font-size:.8rem">
+            <span style="font-weight:600">${e.name}${e.qty > 1 ? ` ×${e.qty}` : ''}</span>
+            <span class="text-muted" style="font-size:.74rem">${e.customer}</span>
+          </a>`;
+      }
+      html += `</div></div><div class="divider" style="margin:1rem 0"></div>`;
+    }
+
+    html += '<div class="today-list">';
+    for (const r of list) {
+      const sc = statusClass[r.status] || 'badge-upcoming';
+      html += `
+        <div class="today-item">
+          <div style="min-width:0">
+            <div class="today-name"><a href="/reservations/${r.id}">${r.customer}</a></div>
+            <div class="today-meta">${r.items || ''} · ${r.type || ''}</div>
+            <div class="today-meta">${fmt(r.start)} → ${fmt(r.end)}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:.4rem;flex-shrink:0">
+            <span class="badge ${sc}">${r.status}</span>
+            <a href="/reservations/${r.id}" class="btn btn-ghost btn-sm">View →</a>
+          </div>
+        </div>`;
+    }
+    html += '</div>';
+    document.getElementById('cal-detail-body').innerHTML = html;
+  };
+
+  // Init: render current month and highlight today
+  render();
+  selectDay(todayStr);
+})();
+</script>
+{% endif %}
 {% endblock %}

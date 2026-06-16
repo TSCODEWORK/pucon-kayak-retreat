@@ -1,141 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Reservations — Pucon Kayak Retreat{% endblock %}
 
-{% block head %}
-<style>
-/* ── Reservation card ──────────────────────────────────────────────────────── */
-.res-card {
-  display: block;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1.25rem 1.4rem;
-  margin-bottom: .75rem;
-  text-decoration: none;
-  color: inherit;
-  box-shadow: var(--shadow);
-  transition: box-shadow .15s, border-color .15s, transform .1s;
-  cursor: pointer;
-  position: relative;
-}
-.res-card:hover {
-  box-shadow: 0 4px 20px rgba(0,0,0,.10);
-  border-color: var(--brand-light);
-  transform: translateY(-1px);
-}
-.res-card:active { transform: translateY(0); }
-
-.res-card-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: .75rem;
-}
-.res-card-name {
-  font-family: 'Montserrat', sans-serif;
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: var(--text);
-  line-height: 1.2;
-}
-.res-card-sub {
-  font-size: .78rem;
-  color: var(--text-muted);
-  margin-top: .15rem;
-}
-.res-card-badges {
-  display: flex;
-  gap: .4rem;
-  flex-wrap: wrap;
-  flex-shrink: 0;
-}
-
-.res-card-mid {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr auto;
-  gap: .5rem 1.5rem;
-  align-items: start;
-  padding: .85rem 1rem;
-  background: var(--slate-50);
-  border-radius: var(--radius-sm);
-  margin-bottom: .75rem;
-}
-@media (max-width: 700px) {
-  .res-card-mid { grid-template-columns: 1fr 1fr; }
-}
-
-.res-card-field-label {
-  font-size: .65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .07em;
-  color: var(--text-muted);
-  margin-bottom: .15rem;
-}
-.res-card-field-value {
-  font-size: .85rem;
-  font-weight: 600;
-  color: var(--text);
-  line-height: 1.3;
-}
-.res-card-field-value.muted {
-  font-weight: 400;
-  color: var(--slate-500);
-}
-
-.res-card-bottom {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: .5rem;
-  flex-wrap: wrap;
-}
-.res-card-items {
-  display: flex;
-  align-items: center;
-  gap: .4rem;
-  font-size: .8rem;
-  color: var(--slate-500);
-}
-.res-card-items-icon { font-size: .9rem; }
-.res-card-arrow {
-  font-size: .85rem;
-  color: var(--brand);
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-/* Left accent bar by status */
-.res-card.upcoming    { border-left: 3.5px solid var(--brand); }
-.res-card.checked-out { border-left: 3.5px solid var(--amber-600); }
-.res-card.returned    { border-left: 3.5px solid var(--green-600); }
-.res-card.canceled    { border-left: 3.5px solid var(--slate-300); opacity: .7; }
-
-/* ── Filter chips ──────────────────────────────────────────────────────────── */
-.filter-chips {
-  display: flex;
-  gap: .4rem;
-  flex-wrap: wrap;
-  margin-bottom: .85rem;
-}
-.filter-chip {
-  display: inline-block;
-  padding: .35rem .9rem;
-  border-radius: 2rem;
-  font-size: .78rem;
-  font-weight: 600;
-  border: 1.5px solid var(--border);
-  color: var(--text-muted);
-  text-decoration: none;
-  background: var(--card);
-  transition: all .15s;
-}
-.filter-chip:hover { border-color: var(--brand); color: var(--brand-dark); }
-.filter-chip.active { background: var(--brand); border-color: var(--brand); color: #fff; }
-</style>
-{% endblock %}
-
 {% block content %}
 <div class="page-header">
   <div class="page-title">
@@ -196,12 +61,14 @@
         </div>
         <div class="res-card-badges">
           <span class="badge badge-{{ st.lower().replace(' ','-') }}">{{ st }}</span>
-          {% if ps == 'Paid in Full' %}
-            <span class="badge badge-paid">Paid</span>
-          {% elif ps == 'Deposit Paid' %}
-            <span class="badge badge-deposit">Deposit</span>
-          {% else %}
-            <span class="badge badge-unpaid">Unpaid</span>
+          {% if pricing_enabled() %}
+            {% if ps == 'Paid in Full' %}
+              <span class="badge badge-paid">Paid</span>
+            {% elif ps == 'Deposit Paid' %}
+              <span class="badge badge-deposit">Deposit</span>
+            {% else %}
+              <span class="badge badge-unpaid">Unpaid</span>
+            {% endif %}
           {% endif %}
           {% if r.get('Waiver Signed') == 'Yes' %}
             <span style="font-size:.75rem;color:var(--green-600);font-weight:600">✓ Waiver</span>
@@ -224,11 +91,16 @@
           <div class="res-card-field-value">{{ r.get('Rental Type','—') }}</div>
         </div>
         <div style="text-align:right">
-          <div class="res-card-field-label">Total</div>
-          {% if r.get('Payment Amount') %}
-            <div class="res-card-field-value" style="font-size:1rem;color:var(--brand-dark)">{{ r.get('Payment Amount') | fmt_currency }}</div>
+          {% if pricing_enabled() %}
+            <div class="res-card-field-label">Total</div>
+            {% if r.get('Payment Amount') %}
+              <div class="res-card-field-value" style="font-size:1rem;color:var(--brand-dark)">{{ r.get('Payment Amount') | fmt_currency }}</div>
+            {% else %}
+              <div class="res-card-field-value muted">—</div>
+            {% endif %}
           {% else %}
-            <div class="res-card-field-value muted">—</div>
+            <div class="res-card-field-label">Items</div>
+            <div class="res-card-field-value">{{ r.get('Item IDs','').split(',') | length }}</div>
           {% endif %}
         </div>
       </div>

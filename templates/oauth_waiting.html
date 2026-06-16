@@ -25,6 +25,13 @@
 
   <p id="status-msg" class="text-xs text-muted"></p>
 
+  <!-- F-13: fallback manual URL shown after 10 seconds if browser didn't open -->
+  <div id="fallback-url" style="display:none;max-width:440px;background:var(--slate-50);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem 1rem;font-size:.8rem;text-align:left">
+    <strong>Browser didn't open automatically?</strong><br>
+    Copy and paste this URL into your browser:<br>
+    <span id="fallback-url-text" style="font-family:monospace;font-size:.72rem;word-break:break-all;color:var(--brand-dark)"></span>
+  </div>
+
   <a href="{{ url_for('settings_view') }}" class="btn btn-ghost btn-sm" style="margin-top:.5rem">
     Cancel
   </a>
@@ -38,6 +45,17 @@
 (function () {
   var attempts = 0;
   var maxAttempts = 150;  // 5 minutes at 2s interval
+  var authUrl = {{ auth_url | tojson }};
+
+  // F-13: after 10 seconds, show the URL in case the browser didn't open
+  setTimeout(function() {
+    if (!document.getElementById('fallback-url').style.display !== 'none') return;
+    var el = document.getElementById('fallback-url');
+    if (el) {
+      document.getElementById('fallback-url-text').textContent = authUrl;
+      el.style.display = '';
+    }
+  }, 10000);
 
   function poll() {
     attempts++;

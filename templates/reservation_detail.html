@@ -2,336 +2,6 @@
 {% block title %}{{ reservation.get('Customer Name','Reservation') }} — Pucon Kayak Retreat{% endblock %}
 
 {% block head %}
-<style>
-/* ── Hero ──────────────────────────────────────────────────────────────────── */
-.res-hero {
-  background: linear-gradient(135deg, var(--charcoal) 0%, #1a3a45 100%);
-  border-radius: var(--radius);
-  padding: 2rem 2.25rem 1.75rem;
-  margin-bottom: 1.75rem;
-  color: #fff;
-  position: relative;
-  overflow: hidden;
-}
-.res-hero::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%2340C1E8' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
-  opacity: .5;
-}
-.res-hero-back {
-  display: inline-flex;
-  align-items: center;
-  gap: .35rem;
-  font-size: .8rem;
-  color: rgba(255,255,255,.6);
-  text-decoration: none;
-  margin-bottom: 1.1rem;
-  transition: color .15s;
-  position: relative;
-}
-.res-hero-back:hover { color: #fff; }
-.res-hero-name {
-  font-family: 'Montserrat', sans-serif;
-  font-size: 2rem;
-  font-weight: 800;
-  line-height: 1.1;
-  margin-bottom: .35rem;
-  position: relative;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-}
-.res-hero-meta {
-  display: flex;
-  align-items: center;
-  gap: .75rem;
-  flex-wrap: wrap;
-  position: relative;
-}
-.res-hero-id {
-  font-family: monospace;
-  font-size: .8rem;
-  color: rgba(255,255,255,.55);
-}
-.res-hero-pills {
-  display: flex;
-  gap: .5rem;
-  flex-wrap: wrap;
-  margin-top: 1.25rem;
-  position: relative;
-}
-.res-pill {
-  display: flex;
-  align-items: center;
-  gap: .4rem;
-  background: rgba(255,255,255,.1);
-  border: 1px solid rgba(255,255,255,.15);
-  border-radius: 2rem;
-  padding: .35rem .85rem;
-  font-size: .8rem;
-  color: rgba(255,255,255,.9);
-  white-space: nowrap;
-}
-.res-pill-icon { font-size: .95rem; }
-
-/* Status badge in hero */
-.badge-hero {
-  display: inline-block;
-  padding: .25rem .75rem;
-  border-radius: 2rem;
-  font-size: .72rem;
-  font-weight: 700;
-  letter-spacing: .05em;
-  text-transform: uppercase;
-}
-.badge-hero.upcoming    { background: rgba(64,193,232,.25); color: #40C1E8; border: 1px solid rgba(64,193,232,.4); }
-.badge-hero.checked-out { background: rgba(217,119,6,.25);  color: #fbbf24; border: 1px solid rgba(217,119,6,.4); }
-.badge-hero.returned    { background: rgba(22,163,74,.25);  color: #4ade80; border: 1px solid rgba(22,163,74,.4); }
-.badge-hero.canceled    { background: rgba(220,38,38,.25);  color: #f87171; border: 1px solid rgba(220,38,38,.4); }
-
-/* ── Action bar ────────────────────────────────────────────────────────────── */
-.action-bar {
-  display: flex;
-  gap: .75rem;
-  flex-wrap: wrap;
-  align-items: center;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1rem 1.25rem;
-  margin-bottom: 1.75rem;
-  box-shadow: var(--shadow);
-}
-.action-bar-label {
-  font-size: .75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: var(--text-muted);
-  margin-right: .25rem;
-}
-
-/* ── Two-column body ───────────────────────────────────────────────────────── */
-.res-body {
-  display: grid;
-  grid-template-columns: 1fr 340px;
-  gap: 1.5rem;
-  align-items: start;
-}
-@media (max-width: 860px) {
-  .res-body { grid-template-columns: 1fr; }
-}
-
-/* ── Info sections ─────────────────────────────────────────────────────────── */
-.res-section {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: var(--shadow);
-  margin-bottom: 1.25rem;
-}
-.res-section-header {
-  padding: 1rem 1.4rem .75rem;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-}
-.res-section-title {
-  font-family: 'Montserrat', sans-serif;
-  font-size: .85rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: var(--text-muted);
-}
-.res-section-icon { font-size: 1rem; }
-
-/* Info rows inside a section */
-.res-rows { padding: .5rem 1.4rem 1rem; }
-.res-row {
-  display: flex;
-  align-items: baseline;
-  gap: .75rem;
-  padding: .6rem 0;
-  border-bottom: 1px solid var(--border);
-}
-.res-row:last-child { border-bottom: none; }
-.res-row-label {
-  font-size: .72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: var(--text-muted);
-  width: 90px;
-  flex-shrink: 0;
-}
-.res-row-value {
-  font-size: .9rem;
-  color: var(--text);
-  font-weight: 500;
-}
-
-/* Date display */
-.date-block {
-  display: flex;
-  gap: 1.25rem;
-  padding: 1rem 1.4rem;
-}
-.date-col { flex: 1; }
-.date-col-label {
-  font-size: .68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .07em;
-  color: var(--text-muted);
-  margin-bottom: .3rem;
-}
-.date-col-date {
-  font-family: 'Montserrat', sans-serif;
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: var(--text);
-  line-height: 1.2;
-}
-.date-col-time {
-  font-size: .8rem;
-  color: var(--text-muted);
-  margin-top: .1rem;
-}
-.date-arrow {
-  display: flex;
-  align-items: center;
-  color: var(--brand);
-  font-size: 1.2rem;
-  padding-top: 1rem;
-}
-.duration-tag {
-  display: inline-block;
-  background: var(--brand-50);
-  color: var(--brand-dark);
-  border: 1px solid var(--brand-light);
-  border-radius: 2rem;
-  padding: .2rem .7rem;
-  font-size: .72rem;
-  font-weight: 700;
-  margin: 0 1.4rem .9rem;
-}
-
-/* Gear card */
-.gear-card {
-  display: flex;
-  align-items: center;
-  gap: .85rem;
-  padding: .85rem 1.4rem;
-  border-bottom: 1px solid var(--border);
-}
-.gear-card:last-child { border-bottom: none; }
-.gear-icon-circle {
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 50%;
-  background: var(--brand-50);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.1rem;
-  flex-shrink: 0;
-}
-.gear-name { font-weight: 600; font-size: .9rem; line-height: 1.2; }
-.gear-meta { font-size: .75rem; color: var(--text-muted); margin-top: .1rem; }
-
-/* ── Sidebar ───────────────────────────────────────────────────────────────── */
-.sidebar-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  overflow: hidden;
-  margin-bottom: 1.25rem;
-}
-.sidebar-card-header {
-  padding: .85rem 1.25rem;
-  border-bottom: 1px solid var(--border);
-  font-family: 'Montserrat', sans-serif;
-  font-size: .78rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: var(--text-muted);
-}
-.sidebar-rows { padding: .25rem 1.25rem .75rem; }
-.sidebar-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: .5rem 0;
-  border-bottom: 1px solid var(--border);
-  font-size: .875rem;
-}
-.sidebar-row:last-child { border-bottom: none; }
-.sidebar-row-label { color: var(--text-muted); }
-.sidebar-row-value { font-weight: 600; }
-
-/* Payment highlight */
-.payment-total {
-  background: var(--brand-50);
-  border-top: 2px solid var(--brand-light);
-  padding: .85rem 1.25rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.payment-total-label { font-weight: 700; font-size: .875rem; }
-.payment-total-amount {
-  font-family: 'Montserrat', sans-serif;
-  font-size: 1.35rem;
-  font-weight: 800;
-  color: var(--brand-dark);
-}
-
-/* Edit toggle */
-.edit-toggle-btn {
-  width: 100%;
-  background: none;
-  border: none;
-  padding: .85rem 1.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
-  font-family: 'Montserrat', sans-serif;
-  font-size: .8rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border);
-  transition: background .15s;
-}
-.edit-toggle-btn:hover { background: var(--slate-50); }
-.edit-panel { display: none; padding: 1.25rem; }
-.edit-panel.open { display: block; }
-
-/* Return modal */
-.modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200; }
-.modal-box {
-  position: fixed;
-  top: 50%; left: 50%;
-  transform: translate(-50%,-50%);
-  background: #fff;
-  border-radius: var(--radius);
-  box-shadow: 0 20px 60px rgba(0,0,0,.2);
-  padding: 2rem;
-  width: 90%;
-  max-width: 440px;
-  z-index: 201;
-}
-.modal-box h3 { margin-bottom: .4rem; }
-.modal-box p { font-size: .875rem; color: var(--text-muted); margin-bottom: 1.25rem; }
-</style>
 {% endblock %}
 
 {% block content %}
@@ -358,8 +28,8 @@
       <div class="res-pill"><span class="res-pill-icon">🏁</span> {{ end_raw | fmt_datetime }}</div>
     {% endif %}
     <div class="res-pill"><span class="res-pill-icon">🚣</span> {{ reservation.get('Rental Type','—') }}</div>
-    {% if reserved_items %}
-      <div class="res-pill"><span class="res-pill-icon">🛶</span> {{ reserved_items | length }} item{{ 's' if reserved_items | length != 1 }}</div>
+    {% if item_ids %}
+      <div class="res-pill"><span class="res-pill-icon">🛶</span> {{ item_ids | length }} item{{ 's' if item_ids | length != 1 }}</div>
     {% endif %}
   </div>
 </div>
@@ -368,17 +38,19 @@
 <div class="action-bar">
   <span class="action-bar-label">Actions</span>
 
-  {% set item_count = reserved_items | length %}
+  {% set item_count = item_ids | length %}
   {% if st == 'Upcoming' %}
+    {% set waiver_ok = reservation.get('Waiver Signed','') == 'Yes' %}
     <form method="POST" style="display:inline"
-      onsubmit="return confirm('Check out {{ item_count }} item{{ 's' if item_count != 1 }} for {{ cname | e }}? Items will be marked Rented.')">
+      onsubmit="return checkOutConfirm({{ item_count }}, {{ cname | tojson }}, {{ waiver_ok | tojson }})">
       <input type="hidden" name="action" value="update_status">
       <input type="hidden" name="status" value="Checked Out">
       <button type="submit" class="btn btn-warning">✓ Check Out</button>
     </form>
 
   {% elif st == 'Checked Out' %}
-    <button class="btn btn-success" onclick="openReturnModal()">✓ Mark Returned</button>
+    {% set payment_ok = (not pricing_enabled()) or reservation.get('Payment Status','') == 'Paid in Full' %}
+    <button class="btn btn-success" onclick="openReturnModal({{ payment_ok | tojson }})">✓ Mark Returned</button>
 
   {% elif st == 'Returned' %}
     <span style="color:var(--green-600);font-weight:600;font-size:.9rem">✓ Rental complete</span>
@@ -387,21 +59,18 @@
     <span style="color:var(--text-muted);font-size:.9rem">This reservation was canceled.</span>
   {% endif %}
 
+  <a href="{{ url_for('reservation_invoice_pdf', res_id=reservation.get('Reservation ID')) }}"
+    class="btn btn-ghost btn-sm" {% if st in ('Returned','Canceled') %}style="margin-left:auto"{% endif %}>
+    📄 Download {{ 'Invoice' if pricing_enabled() else 'Summary' }} PDF
+  </a>
+
   {% if st not in ('Returned','Canceled') %}
     <button class="btn btn-ghost btn-sm" style="margin-left:auto"
       onclick="toggleEdit()">✏️ Edit Details</button>
-    <!-- Cancel is separated visually to reduce mis-tap risk (#15) -->
-    <span style="width:1px;background:var(--border);align-self:stretch;margin:0 .25rem"></span>
-    <form method="POST" style="display:inline"
-      onsubmit="return confirm('Cancel this reservation for {{ cname | e }}? This cannot be undone.')">
-      <input type="hidden" name="action" value="update_status">
-      <input type="hidden" name="status" value="Canceled">
-      <button type="submit" class="btn btn-danger btn-sm">✕ Cancel Reservation</button>
-    </form>
   {% endif %}
 </div>
 
-{% if discount_pct > 0 %}
+{% if discount_pct > 0 and pricing_enabled() %}
 <!-- ── Discount banner ───────────────────────────────────────────────────── -->
 <div style="background:linear-gradient(90deg,#064e3b,#065f46);border-radius:var(--radius);padding:1rem 1.4rem;margin-bottom:1.5rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;box-shadow:0 2px 12px rgba(6,78,59,.2)">
   <div style="font-size:1.6rem">🏷️</div>
@@ -503,10 +172,11 @@
     <div class="res-section">
       <div class="res-section-header">
         <span class="res-section-icon">🛶</span>
-        <span class="res-section-title">Equipment ({{ reserved_items | length }})</span>
+        <span class="res-section-title">Equipment ({{ item_ids | length }})</span>
       </div>
       {% if reserved_items %}
         {% for item in reserved_items %}
+          {% set item_qty = item_ids | select("equalto", item.get('Item ID')|string) | list | length %}
           <div class="gear-card">
             <div class="gear-icon-circle">
               {% set cat = item.get('Category','') | lower %}
@@ -516,10 +186,15 @@
               {% else %}🛶{% endif %}
             </div>
             <div style="flex:1">
-              <div class="gear-name">{{ item.get('Name/Description', item.get('Item ID')) }}</div>
+              <div class="gear-name">{{ item.get('Name/Description', item.get('Item ID')) }}{% if item_qty > 1 %} <span style="color:var(--brand);font-weight:700">×{{ item_qty }}</span>{% endif %}</div>
               <div class="gear-meta">{{ item.get('Item ID') }} · {{ item.get('Category','') }}
                 {% if item.get('Size') %} · Size {{ item.get('Size') }}{% endif %}
               </div>
+              {% if pricing_enabled() and item.get('Full-Day Rate') %}
+                <div class="gear-meta" style="color:var(--brand-dark);font-weight:600;margin-top:.1rem">
+                  {{ item['Full-Day Rate'] | fmt_price(get_display_currency()) }}/day
+                </div>
+              {% endif %}
               {% if item.get('Condition Notes') %}
                 <div style="font-size:.75rem;color:var(--slate-500);margin-top:.15rem;font-style:italic">{{ item.get('Condition Notes') }}</div>
               {% endif %}
@@ -559,15 +234,15 @@
             <div class="form-grid">
               <div class="form-group">
                 <label class="form-label">Name <span class="req">*</span></label>
-                <input class="form-control" type="text" name="customer_name" value="{{ reservation.get('Customer Name','') }}" required>
+                <input class="form-control" type="text" name="customer_name" value="{{ edit_form_data.get('customer_name', reservation.get('Customer Name','')) }}" required>
               </div>
               <div class="form-group">
                 <label class="form-label">Phone</label>
-                <input class="form-control" type="tel" name="customer_phone" value="{{ reservation.get('Customer Phone','') }}">
+                <input class="form-control" type="tel" name="customer_phone" value="{{ edit_form_data.get('customer_phone', reservation.get('Customer Phone','')) }}">
               </div>
               <div class="form-group" style="grid-column:1/-1">
                 <label class="form-label">Email</label>
-                <input class="form-control" type="email" name="customer_email" value="{{ reservation.get('Customer Email','') }}">
+                <input class="form-control" type="email" name="customer_email" value="{{ edit_form_data.get('customer_email', reservation.get('Customer Email','')) }}">
               </div>
             </div>
           </div>
@@ -578,12 +253,12 @@
               <div class="form-group">
                 <label class="form-label">Start</label>
                 <input class="form-control" type="datetime-local" name="start_datetime"
-                  value="{{ reservation.get('Start Date & Time','') | replace(' ','T') }}">
+                  value="{{ (edit_form_data.get('start_datetime') or reservation.get('Start Date & Time','')) | replace(' ','T') | truncate(16, killwords=True, end='') }}">
               </div>
               <div class="form-group">
                 <label class="form-label">End</label>
                 <input class="form-control" type="datetime-local" name="end_datetime"
-                  value="{{ reservation.get('End Date & Time','') | replace(' ','T') }}">
+                  value="{{ (edit_form_data.get('end_datetime') or reservation.get('End Date & Time','')) | replace(' ','T') | truncate(16, killwords=True, end='') }}">
               </div>
             </div>
             <div class="form-group" style="margin-top:.75rem">
@@ -601,27 +276,35 @@
             <div class="form-section-title">Equipment</div>
             <div class="item-select-grid">
               {% for item in inventory %}
-                {% set is_checked = item['Item ID']|string in item_ids %}
-                {# Block: Maintenance always, or Rented by a DIFFERENT reservation (#2) #}
-                {% set rented_elsewhere = item.Status == 'Rented' and not is_checked %}
-                {% set unavailable = (item.Status == 'Maintenance' or rented_elsewhere) and not is_checked %}
-                <label class="item-select-card {% if unavailable %}unavailable{% endif %}">
-                  <input type="checkbox" name="item_ids" value="{{ item['Item ID'] }}"
-                    {% if is_checked %}checked{% endif %}
-                    {% if unavailable %}disabled{% endif %}>
-                  <div>
-                    <div class="item-name">{{ item.get('Name/Description', item['Item ID']) }}</div>
-                    <div class="item-meta">{{ item['Item ID'] }} · {{ item.get('Category','') }}</div>
-                    <div class="item-meta" style="margin-top:.1rem">
-                      <span class="badge badge-{{ item.Status.lower() }}" style="font-size:.65rem">{{ item.Status }}</span>
-                      {% if rented_elsewhere %}<span style="font-size:.65rem;color:var(--red-600);margin-left:.3rem">⚠ Rented elsewhere</span>{% endif %}
+                {% set iid = item['Item ID']|string %}
+                {% set current_qty = edit_item_qtys.get(iid, 0) %}
+                {% set available_excl_self = item_availability.get(iid, 0) %}
+                {% set max_qty = available_excl_self + current_qty %}
+                {% set total_qty = item.get('Quantity', 1)|int %}
+                <input type="hidden" name="item_qty_id" value="{{ iid }}">
+                <label class="item-select-card {% if max_qty == 0 %}unavailable{% endif %}">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;width:100%">
+                    <div style="min-width:0">
+                      <div class="item-name">{{ item.get('Name/Description', iid) }}</div>
+                      <div class="item-meta">{{ iid }} · {{ item.get('Category','') }}</div>
+                      <div class="item-meta" style="margin-top:.1rem">
+                        <span class="badge badge-{{ item.Status.lower() }}" style="font-size:.65rem">{{ item.Status }}</span>
+                        {% if total_qty > 1 %}
+                          <span style="font-size:.65rem;color:var(--text-muted);margin-left:.3rem">{{ available_excl_self }} of {{ total_qty }} available</span>
+                        {% elif max_qty == 0 %}
+                          <span style="font-size:.65rem;color:var(--red-600);margin-left:.3rem">⚠ Unavailable</span>
+                        {% endif %}
+                      </div>
                     </div>
+                    <input class="form-control" type="number" name="item_qty_val" min="0" max="{{ max_qty }}"
+                      value="{{ current_qty }}" style="width:60px;flex-shrink:0" {% if max_qty == 0 %}readonly{% endif %}>
                   </div>
                 </label>
               {% endfor %}
             </div>
           </div>
 
+          {% if pricing_enabled() %}
           <div class="form-section">
             <div class="form-section-title">Payment</div>
             <div class="form-grid">
@@ -635,12 +318,16 @@
               </div>
               <div class="form-group">
                 <label class="form-label">Amount ($)</label>
-                <input class="form-control" type="number" name="payment_amount" min="0" step="0.01"
-                  value="{{ reservation.get('Payment Amount','') }}">
+                <div style="display:flex;gap:.4rem">
+                  <input class="form-control" type="number" name="payment_amount" id="payment-amount-edit" min="0" step="0.01"
+                    value="{{ reservation.get('Payment Amount','') }}">
+                  <button type="button" class="btn btn-ghost btn-sm" id="recalc-btn" style="flex-shrink:0" title="Recalculate from current dates & equipment">↺ Recalculate</button>
+                </div>
               </div>
             </div>
             <div id="pricing-breakdown" style="margin-top:.75rem"></div>
           </div>
+          {% endif %}
 
           <div class="form-section">
             <div class="form-section-title">Other</div>
@@ -687,16 +374,25 @@
         </div>
         <div class="sidebar-row">
           <span class="sidebar-row-label">Items</span>
-          <span class="sidebar-row-value">{{ reserved_items | length }}</span>
+          <span class="sidebar-row-value">{{ item_ids | length }}</span>
         </div>
       </div>
+      {% if reservation.get('Discount Percent') %}
+      <div style="padding:.75rem 1.25rem;border-top:1px solid var(--border);background:var(--slate-50)">
+        <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--green-600);margin-bottom:.4rem">✓ {{ reservation.get('Discount Percent') }}% Discount Applied</div>
+        <div class="sidebar-row" style="border-bottom:none;padding:.15rem 0">
+          <span class="sidebar-row-label">Original</span>
+          <span class="sidebar-row-value" style="text-decoration:line-through;color:var(--text-muted)">{{ reservation.get('Original Payment Amount') | fmt_currency }}</span>
+        </div>
+        <div class="sidebar-row" style="border-bottom:none;padding:.15rem 0">
+          <span class="sidebar-row-label">Discount</span>
+          <span class="sidebar-row-value" style="color:var(--green-600)">-{{ reservation.get('Discount Percent') }}%</span>
+        </div>
+      </div>
+      {% endif %}
       {% if reservation.get('Payment Amount') %}
       <div class="payment-total">
-        <span class="payment-total-label">Total
-          {% if '% extended rental discount applied' in reservation.get('Notes','') %}
-            <span style="display:block;font-size:.7rem;font-weight:600;color:var(--green-600);margin-top:.1rem">✓ Discount applied</span>
-          {% endif %}
-        </span>
+        <span class="payment-total-label">{{ 'Final Total' if reservation.get('Discount Percent') else 'Total' }}</span>
         <span class="payment-total-amount">{{ reservation.get('Payment Amount') | fmt_currency }}</span>
       </div>
       {% endif %}
@@ -733,13 +429,49 @@
       </div>
     </div>
 
+    <!-- Waiver file -->
+    <div class="sidebar-card">
+      <div class="sidebar-card-header">📄 Waiver Document</div>
+      <div style="padding:1rem 1.25rem">
+        {% if reservation.get('Waiver File') %}
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.75rem">
+            <a href="{{ url_for('view_waiver', res_id=reservation.get('Reservation ID')) }}" target="_blank"
+              style="color:var(--brand-dark);font-weight:600;font-size:.85rem;text-decoration:none">
+              📎 View uploaded waiver →
+            </a>
+          </div>
+          <div style="display:flex;gap:.5rem">
+            <label class="btn btn-ghost btn-sm" style="cursor:pointer">
+              Replace
+              <input type="file" name="waiver_file" accept=".pdf,.jpg,.jpeg,.png" style="display:none"
+                onchange="document.getElementById('waiver-upload-form').submit()" form="waiver-upload-form">
+            </label>
+            <form method="POST" action="{{ url_for('remove_waiver', res_id=reservation.get('Reservation ID')) }}"
+              onsubmit="return confirm('Remove the uploaded waiver file?')">
+              <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+            </form>
+          </div>
+        {% else %}
+          <div class="text-sm text-muted" style="margin-bottom:.75rem">No waiver document uploaded yet.</div>
+          <label class="btn btn-primary btn-sm" style="cursor:pointer;display:inline-block">
+            ⬆ Upload Waiver (PDF/JPG/PNG)
+            <input type="file" name="waiver_file" accept=".pdf,.jpg,.jpeg,.png" style="display:none"
+              onchange="document.getElementById('waiver-upload-form').submit()" form="waiver-upload-form">
+          </label>
+        {% endif %}
+        <form id="waiver-upload-form" method="POST" enctype="multipart/form-data"
+          action="{{ url_for('upload_waiver', res_id=reservation.get('Reservation ID')) }}" style="display:none"></form>
+      </div>
+    </div>
+
     <!-- Quick gear status -->
     {% if reserved_items %}
     <div class="sidebar-card">
       <div class="sidebar-card-header">🛶 Gear Status</div>
       {% for item in reserved_items %}
+        {% set item_qty = item_ids | select("equalto", item.get('Item ID')|string) | list | length %}
         <div style="padding:.65rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:.5rem">
-          <div style="font-size:.82rem;font-weight:500;color:var(--text)">{{ item.get('Name/Description', item.get('Item ID')) }}</div>
+          <div style="font-size:.82rem;font-weight:500;color:var(--text)">{{ item.get('Name/Description', item.get('Item ID')) }}{% if item_qty > 1 %} ×{{ item_qty }}{% endif %}</div>
           <span class="badge badge-{{ item.get('Status','').lower() }}" style="flex-shrink:0;font-size:.65rem">{{ item.get('Status') }}</span>
         </div>
       {% endfor %}
@@ -750,11 +482,26 @@
 
 </div><!-- /res-body -->
 
+<!-- F-3: Cancel Reservation moved to bottom — separated from Edit to prevent accidental taps -->
+{% if st not in ('Returned','Canceled') %}
+<div style="margin-top:2rem;padding-top:1.25rem;border-top:1px solid var(--border);display:flex;justify-content:flex-end">
+  <form method="POST"
+    onsubmit="return confirm('Cancel this reservation for ' + {{ cname | tojson }} + '? This cannot be undone.')">
+    <input type="hidden" name="action" value="update_status">
+    <input type="hidden" name="status" value="Canceled">
+    <button type="submit" class="btn btn-danger btn-sm">✕ Cancel Reservation</button>
+  </form>
+</div>
+{% endif %}
+
 <!-- ── Return modal ────────────────────────────────────────────────────────── -->
 {% if st == 'Checked Out' %}
 <div id="return-overlay" class="modal-overlay hidden" onclick="closeReturnModal()"></div>
 <div id="return-modal" class="modal-box hidden">
   <h3>Mark as Returned</h3>
+  <div id="return-payment-warning" style="display:none;background:var(--amber-50,#fffbeb);border:1px solid var(--amber-300,#fcd34d);border-radius:var(--radius-sm);padding:.6rem .9rem;margin-bottom:.85rem;font-size:.82rem;color:var(--amber-800,#92400e)">
+    ⚠ This rental has not been paid in full — confirm before returning.
+  </div>
   <p>Optionally record the condition of returned gear before closing out this rental.</p>
   <form method="POST">
     <input type="hidden" name="action" value="update_status">
@@ -776,6 +523,15 @@
 
 {% block scripts %}
 <script>
+// F-2: open edit panel on page load if server flagged it (validation error restore)
+(function() {
+  var shouldOpen = {{ 'true' if edit_open else 'false' }};
+  if (shouldOpen) {
+    var s = document.getElementById('edit-panel-section');
+    if (s) s.style.display = 'block';
+  }
+})();
+
 function toggleEdit() {
   const section = document.getElementById('edit-panel-section');
   if (!section) return;
@@ -783,7 +539,20 @@ function toggleEdit() {
   section.style.display = isHidden ? 'block' : 'none';
   if (isHidden) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
-function openReturnModal() {
+
+// F-11: waiver warning on check-out (D-2: uses tojson so cname is JS-safe)
+function checkOutConfirm(itemCount, cname, waiverOk) {
+  var msg = 'Check out ' + itemCount + ' item' + (itemCount !== 1 ? 's' : '') + ' for ' + cname + '? Items will be marked Rented.';
+  if (!waiverOk) {
+    msg = '⚠ Warning: waiver has NOT been signed.\n\n' + msg;
+  }
+  return confirm(msg);
+}
+
+// F-11: payment warning on return modal open
+function openReturnModal(paymentOk) {
+  var warn = document.getElementById('return-payment-warning');
+  if (warn) warn.style.display = paymentOk ? 'none' : '';
   document.getElementById('return-overlay').classList.remove('hidden');
   document.getElementById('return-modal').classList.remove('hidden');
 }
@@ -791,5 +560,14 @@ function closeReturnModal() {
   document.getElementById('return-overlay').classList.add('hidden');
   document.getElementById('return-modal').classList.add('hidden');
 }
+
+// P-12: Auto-dismiss success flash messages after 5 seconds
+document.querySelectorAll('.flash.flash-success').forEach(function(el) {
+  setTimeout(function() {
+    el.style.transition = 'opacity .4s';
+    el.style.opacity = '0';
+    setTimeout(function() { el.remove(); }, 400);
+  }, 5000);
+});
 </script>
 {% endblock %}

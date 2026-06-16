@@ -59,7 +59,10 @@ JSON
 # ── 5. Commit & tag ───────────────────────────────────────────────────────────
 echo ""
 echo "▸ Committing and tagging v${VERSION}…"
-git add app.py pucon_kayak.spec version.json
+# -A stages all tracked + untracked source changes (respecting .gitignore for
+# dist/build artifacts) — previously this only staged app.py/spec/version.json,
+# so template/CSS/JS/db.py changes were built into the DMG but never reached git.
+git add -A
 git commit -m "Release v${VERSION} — ${NOTES}"
 git tag "v${VERSION}"
 git push origin master

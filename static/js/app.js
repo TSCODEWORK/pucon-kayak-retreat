@@ -1,7 +1,4 @@
-// ── Flash auto-dismiss ────────────────────────────────────────────────────────
-document.querySelectorAll(".flash").forEach(el => {
-  setTimeout(() => el.remove(), 6000);
-});
+// Flash auto-dismiss is now handled in base.html (P-12).
 
 // ── Availability + pricing on new/edit reservation forms ──────────────────────
 (function () {
@@ -19,7 +16,13 @@ document.querySelectorAll(".flash").forEach(el => {
   let debounceTimer  = null;
 
   function selectedItemIds() {
-    return [...form.querySelectorAll("[name=item_ids]:checked")].map(c => c.value);
+    // Quantity-stepper inputs: parallel item_qty_id (hidden) / item_qty_val (number)
+    // lists — repeat each ID once per selected unit so duplicates encode quantity.
+    const ids  = [...form.querySelectorAll("[name=item_qty_id]")].map(el => el.value);
+    const vals = [...form.querySelectorAll("[name=item_qty_val]")].map(el => parseInt(el.value, 10) || 0);
+    const out = [];
+    ids.forEach((id, i) => { for (let n = 0; n < vals[i]; n++) out.push(id); });
+    return out;
   }
 
   function checkAvailabilityAndPricing() {
@@ -57,10 +60,13 @@ document.querySelectorAll(".flash").forEach(el => {
       .then(r => r.json())
       .then(data => {
         if (data.error) { pricingBox.innerHTML = ""; return; }
+        const isCLP = data.currency === "CLP";
+        const fmtAmt = (n) => isCLP ? `CLP $${Math.round(n).toLocaleString()}` : `$${n.toFixed(2)}`;
         let html = `<div class="pricing-box">
           <h4>Suggested Price</h4>`;
         data.breakdown.forEach(b => {
-          html += `<div class="pricing-row"><span>${b.name}</span><span>$${b.subtotal.toFixed(2)}</span></div>`;
+          const label = b.qty > 1 ? `${b.name} ×${b.qty}` : b.name;
+          html += `<div class="pricing-row"><span>${label}</span><span>${fmtAmt(b.subtotal)}</span></div>`;
         });
         let dur = "";
         if (data.duration_hours) {
@@ -68,11 +74,12 @@ document.querySelectorAll(".flash").forEach(el => {
             ? ` · ${data.duration_days} day${data.duration_days !== 1 ? "s" : ""}`
             : ` · ${data.duration_hours}h`;
         }
-        html += `<div class="pricing-row pricing-total"><span>Total${dur}</span><span>$${data.total.toFixed(2)}</span></div></div>`;
+        html += `<div class="pricing-row pricing-total"><span>Total${dur}</span><span>${fmtAmt(data.total)}</span></div></div>`;
         pricingBox.innerHTML = html;
-        // Pre-fill amount if empty or zero
-        if (amountInput && (!amountInput.value || parseFloat(amountInput.value) === 0)) {
-          amountInput.value = data.total.toFixed(2);
+        // Always recalculate — staff expect Amount to track the current dates/equipment
+        // (previously this only filled when empty, so editing dates left a stale total).
+        if (amountInput) {
+          amountInput.value = isCLP ? Math.round(data.total) : data.total.toFixed(2);
         }
       })
       .catch(() => { pricingBox.innerHTML = ""; });
@@ -84,51 +91,31 @@ document.querySelectorAll(".flash").forEach(el => {
   }
 
   form.addEventListener("change", scheduleCheck);
+  form.addEventListener("input", (e) => {
+    if (e.target && e.target.name === "item_qty_val") scheduleCheck();
+  });
   if (startInput) startInput.addEventListener("input", scheduleCheck);
   if (endInput)   endInput.addEventListener("input", scheduleCheck);
   if (typeSelect) typeSelect.addEventListener("change", scheduleCheck);
+
+  const recalcBtn = document.getElementById("recalc-btn");
+  if (recalcBtn) recalcBtn.addEventListener("click", checkAvailabilityAndPricing);
 })();
 
 // ── Inventory status quick-update modal ───────────────────────────────────────
+// P-5: The authoritative openInvModal is defined inline in inventory.html
+// (it accepts 8 args including rates). This file only wires the overlay click.
 (function () {
-  const modal    = document.getElementById("inv-modal");
-  const overlay  = document.getElementById("inv-overlay");
-  if (!modal) return;
-
-  window.openInvModal = function (itemId, currentStatus, currentNotes) {
-    document.getElementById("inv-modal-id").textContent    = itemId;
-    document.getElementById("inv-form-id").value           = itemId;
-    document.getElementById("inv-status-select").value     = currentStatus;
-    document.getElementById("inv-notes-input").value       = currentNotes;
-    document.getElementById("inv-modal-action").action     = `/inventory/${encodeURIComponent(itemId)}/update`;
-    modal.classList.remove("hidden");
-    overlay.classList.remove("hidden");
-  };
-
-  window.closeInvModal = function () {
-    modal.classList.add("hidden");
-    overlay.classList.add("hidden");
-  };
-
-  overlay.addEventListener("click", closeInvModal);
+  const overlay = document.getElementById("inv-overlay");
+  if (!overlay) return;
+  overlay.addEventListener("click", function() {
+    if (window.closeInvModal) window.closeInvModal();
+  });
 })();
 
-// ── Return modal ──────────────────────────────────────────────────────────────
-(function () {
-  const modal   = document.getElementById("return-modal");
-  const overlay = document.getElementById("return-overlay");
-  if (!modal) return;
-
-  window.openReturnModal = function () {
-    modal.classList.remove("hidden");
-    overlay.classList.remove("hidden");
-  };
-  window.closeReturnModal = function () {
-    modal.classList.add("hidden");
-    overlay.classList.add("hidden");
-  };
-  overlay.addEventListener("click", closeReturnModal);
-})();
+// Return modal: openReturnModal / closeReturnModal are defined inline in
+// reservation_detail.html (they accept a paymentOk flag for F-11 warning).
+// No duplicate definitions here (P-5).
 
 // ── Calendar ──────────────────────────────────────────────────────────────────
 (function () {

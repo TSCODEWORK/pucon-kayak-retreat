@@ -11,8 +11,35 @@
 
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1.25rem;align-items:start">
 
-  <!-- ── Default rental rates ── -->
+  <!-- ── Pricing toggle ── -->
   <div class="card">
+    <div class="card-header">
+      <div>
+        <h3>Pricing</h3>
+        <div class="text-sm text-muted">This is a reservation tracker first — pricing is optional</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem">
+        <div>
+          <div style="font-weight:600;margin-bottom:.25rem">Track Pricing</div>
+          <div class="text-sm text-muted" style="max-width:340px">
+            When off, rates, totals, discounts, and payment fields are hidden everywhere in the app.
+            Existing pricing data is kept and reappears if you turn this back on.
+          </div>
+        </div>
+        <form method="POST" style="flex-shrink:0">
+          <input type="hidden" name="action" value="toggle_pricing">
+          <button type="submit" class="btn {{ 'btn-primary' if pricing_enabled() else 'btn-ghost' }} btn-sm">
+            {{ 'ON' if pricing_enabled() else 'OFF' }}
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Default rental rates ── -->
+  <div class="card" {% if not pricing_enabled() %}style="opacity:.5;pointer-events:none"{% endif %}>
     <div class="card-header">
       <div>
         <h3>Default Rental Rates</h3>
@@ -54,7 +81,7 @@
   </div>
 
   <!-- ── Bulk rate update ── -->
-  <div class="card">
+  <div class="card" {% if not pricing_enabled() %}style="opacity:.5;pointer-events:none"{% endif %}>
     <div class="card-header">
       <div>
         <h3>Bulk Rate Update</h3>
@@ -154,12 +181,15 @@
             value="{{ settings.get('business_name','Pucon Kayak Retreat') }}">
         </div>
         <div class="form-group" style="margin-bottom:1rem">
-          <label class="form-label">Currency</label>
+          <label class="form-label">Default Display Currency
+            <span style="font-size:.72rem;font-weight:400;color:var(--text-muted);margin-left:.35rem">(controls the nav currency toggle default)</span>
+          </label>
           <select class="form-control" name="currency" style="max-width:160px">
             {% for c in ['USD','CLP','EUR','GBP'] %}
               <option value="{{ c }}" {% if settings.get('currency','USD') == c %}selected{% endif %}>{{ c }}</option>
             {% endfor %}
           </select>
+          <div class="text-sm text-muted" style="margin-top:.35rem">Item rates are stored in <strong>{{ get_rate_currency() }}</strong> — change that in the Currency &amp; Exchange Rate section below.</div>
         </div>
         <button type="submit" class="btn btn-primary">Save</button>
       </form>
@@ -167,7 +197,7 @@
   </div>
 
   <!-- ── Currency & Exchange Rate ── -->
-  <div class="card">
+  <div class="card" {% if not pricing_enabled() %}style="opacity:.5;pointer-events:none"{% endif %}>
     <div class="card-header">
       <div>
         <h3>Currency & Exchange Rate</h3>
@@ -277,7 +307,7 @@
       <!-- Sync actions -->
       <div style="display:flex;gap:.75rem;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:1rem">
         <form method="POST" action="{{ url_for('api_pull') }}"
-          onsubmit="{% if not sheet_id or not google_connected %}alert('Complete Steps 1 and 2 first.'); return false;{% else %}return confirm('This will overwrite local data from Google Sheets. Any local-only changes will be lost. Continue?');{% endif %}">
+          onsubmit="{% if not sheet_id or not google_connected %}alert('Complete Steps 1 and 2 first.'); return false;{% else %}return confirm('This syncs the latest data from Google Sheets into the app. It will update or add items — it will not delete your local reservations. Continue?');{% endif %}">
           <button type="submit" class="btn btn-warning"
             {% if not sheet_id or not google_connected %}title="Complete setup first" disabled{% endif %}>
             ↓ Pull from Sheets

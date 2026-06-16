@@ -201,6 +201,7 @@ Dagger - Code M (2)&#9;Dagger&#9;Dagger Code M&#9;M&#9;30000&#9;30000"
     </div>
 
     <!-- Rates row -->
+    {% if pricing_enabled() %}
     <div style="margin-bottom:.75rem">
       <div class="form-section-title">Rental Rates ({{ get_rate_currency() }} — leave blank if not applicable)</div>
       <div class="form-grid-3" style="gap:.75rem">
@@ -226,6 +227,7 @@ Dagger - Code M (2)&#9;Dagger&#9;Dagger Code M&#9;M&#9;30000&#9;30000"
         </div>
       </div>
     </div>
+    {% endif %}
 
     <div class="btn-group">
       <button type="submit" class="btn btn-primary">Add to Inventory</button>
@@ -283,7 +285,7 @@ Dagger - Code M (2)&#9;Dagger&#9;Dagger Code M&#9;M&#9;30000&#9;30000"
         {% endif %}
 
         {% set has_rates = item.get('Hourly Rate') or item.get('Half-Day Rate') or item.get('Full-Day Rate') or item.get('Multi-Day Rate') %}
-        {% if has_rates %}
+        {% if has_rates and pricing_enabled() %}
           {% set rc = get_rate_currency() %}
           <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.3rem">
             {% if item.get('Hourly Rate') %}<span class="text-xs text-muted">{{ item['Hourly Rate'] | fmt_price(get_display_currency()) }}/hr</span>{% endif %}
@@ -302,20 +304,22 @@ Dagger - Code M (2)&#9;Dagger&#9;Dagger Code M&#9;M&#9;30000&#9;30000"
         {% set _hd  = item.get('Half-Day Rate','') %}
         {% set _fd  = item.get('Full-Day Rate','') %}
         {% set _md  = item.get('Multi-Day Rate','') %}
+        {% set _nm  = item.get('Name/Description','') | replace("'","\\'") %}
+        {% set _cat = item.get('Category','') | replace("'","\\'") %}
         <div class="inv-actions">
           {% if item.get('Status') != 'Maintenance' %}
             <button class="btn btn-warning btn-sm"
-              onclick="openInvModal('{{ _id }}','Maintenance','{{ _nts }}','{{ _qty }}','{{ _hr }}','{{ _hd }}','{{ _fd }}','{{ _md }}')">
+              onclick="openInvModal('{{ _id }}','Maintenance','{{ _nts }}','{{ _qty }}','{{ _hr }}','{{ _hd }}','{{ _fd }}','{{ _md }}','{{ _nm }}','{{ _cat }}')">
               Maintenance
             </button>
           {% else %}
             <button class="btn btn-success btn-sm"
-              onclick="openInvModal('{{ _id }}','Available','{{ _nts }}','{{ _qty }}','{{ _hr }}','{{ _hd }}','{{ _fd }}','{{ _md }}')">
+              onclick="openInvModal('{{ _id }}','Available','{{ _nts }}','{{ _qty }}','{{ _hr }}','{{ _hd }}','{{ _fd }}','{{ _md }}','{{ _nm }}','{{ _cat }}')">
               Set Available
             </button>
           {% endif %}
           <button class="btn btn-ghost btn-sm"
-            onclick="openInvModal('{{ _id }}','{{ _sts }}','{{ _nts }}','{{ _qty }}','{{ _hr }}','{{ _hd }}','{{ _fd }}','{{ _md }}')">
+            onclick="openInvModal('{{ _id }}','{{ _sts }}','{{ _nts }}','{{ _qty }}','{{ _hr }}','{{ _hd }}','{{ _fd }}','{{ _md }}','{{ _nm }}','{{ _cat }}')">
             Edit
           </button>
           <form method="POST" action="{{ url_for('delete_inventory', item_id=item['Item ID']) }}" style="display:inline"
@@ -339,8 +343,11 @@ Dagger - Code M (2)&#9;Dagger&#9;Dagger Code M&#9;M&#9;30000&#9;30000"
           <th style="padding:.5rem .75rem;color:var(--text-muted);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em">Description</th>
           <th style="padding:.5rem .75rem;color:var(--text-muted);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em">Size</th>
           <th style="padding:.5rem .75rem;color:var(--text-muted);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em">Status</th>
+          <th style="padding:.5rem .75rem;color:var(--text-muted);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;text-align:center">Qty</th>
+          {% if pricing_enabled() %}
           <th style="padding:.5rem .75rem;color:var(--text-muted);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em">Full-Day</th>
           <th style="padding:.5rem .75rem;color:var(--text-muted);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em">Multi-Day</th>
+          {% endif %}
           <th style="padding:.5rem .75rem"></th>
         </tr>
       </thead>
@@ -364,21 +371,37 @@ Dagger - Code M (2)&#9;Dagger&#9;Dagger Code M&#9;M&#9;30000&#9;30000"
             <td style="padding:.55rem .75rem;white-space:nowrap">
               <span class="badge badge-{{ item.get('Status','available').lower() }}">{{ item.get('Status','Available') }}</span>
             </td>
+            <td style="padding:.55rem .75rem;text-align:center;font-weight:600">
+              {{ item.get('Quantity','1') }}
+            </td>
+            {% if pricing_enabled() %}
             <td style="padding:.55rem .75rem;white-space:nowrap">
               {% if item.get('Full-Day Rate') %}{{ item['Full-Day Rate'] | fmt_price(get_display_currency()) }}{% else %}—{% endif %}
             </td>
             <td style="padding:.55rem .75rem;white-space:nowrap">
               {% if item.get('Multi-Day Rate') %}{{ item['Multi-Day Rate'] | fmt_price(get_display_currency()) }}{% else %}—{% endif %}
             </td>
+            {% endif %}
             <td style="padding:.55rem .75rem;white-space:nowrap;text-align:right">
-              <div style="display:inline-flex;gap:.4rem">
+              <div style="display:inline-flex;gap:.4rem;align-items:center">
+                {% if item.get('Status') != 'Maintenance' %}
+                  <button class="btn btn-warning btn-sm"
+                    onclick="openInvModal('{{ _id }}','Maintenance','{{ _nts }}','{{ _qty }}','{{ _hr }}','{{ _hd }}','{{ _fd }}','{{ _md }}','{{ _nm }}','{{ _cat }}')">
+                    Maint.
+                  </button>
+                {% else %}
+                  <button class="btn btn-success btn-sm"
+                    onclick="openInvModal('{{ _id }}','Available','{{ _nts }}','{{ _qty }}','{{ _hr }}','{{ _hd }}','{{ _fd }}','{{ _md }}','{{ _nm }}','{{ _cat }}')">
+                    Available
+                  </button>
+                {% endif %}
                 <button class="btn btn-ghost btn-sm"
-                  onclick="openInvModal('{{ _id }}','{{ _sts }}','{{ _nts }}','{{ _qty }}','{{ _hr }}','{{ _hd }}','{{ _fd }}','{{ _md }}')">
+                  onclick="openInvModal('{{ _id }}','{{ _sts }}','{{ _nts }}','{{ _qty }}','{{ _hr }}','{{ _hd }}','{{ _fd }}','{{ _md }}','{{ _nm }}','{{ _cat }}')">
                   Edit
                 </button>
                 <form method="POST" action="{{ url_for('delete_inventory', item_id=item['Item ID']) }}" style="display:inline"
                   onsubmit="return confirm('Remove {{ item['Item ID'] | replace("'", "\\'") }}?')">
-                  <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+                  <button type="submit" class="btn btn-danger btn-sm">✕</button>
                 </form>
               </div>
             </td>
@@ -402,10 +425,22 @@ Dagger - Code M (2)&#9;Dagger&#9;Dagger Code M&#9;M&#9;30000&#9;30000"
 
 <!-- ── Status / rates edit modal ── -->
 <div id="inv-overlay" class="modal-overlay hidden" onclick="closeInvModal()"></div>
-<div id="inv-modal" class="modal-box hidden" style="max-width:480px">
+<div id="inv-modal" class="modal-box hidden" style="max-width:500px;max-height:90vh;overflow-y:auto">
   <h3 style="margin-bottom:1.1rem">Edit Item — <span id="inv-modal-id"></span></h3>
   <form method="POST" id="inv-modal-action">
     <input type="hidden" name="item_id" id="inv-form-id">
+
+    <!-- Name / Category row -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:.9rem">
+      <div class="form-group">
+        <label class="form-label">Name / Description</label>
+        <input class="form-control" type="text" name="name" id="inv-name-input" placeholder="e.g. Dagger Katana S">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Category</label>
+        <input class="form-control" type="text" name="category" id="inv-category-input" placeholder="e.g. Kayak">
+      </div>
+    </div>
 
     <!-- Status & quantity row -->
     <div style="display:grid;grid-template-columns:1fr auto;gap:.75rem;margin-bottom:.9rem">
@@ -425,6 +460,7 @@ Dagger - Code M (2)&#9;Dagger&#9;Dagger Code M&#9;M&#9;30000&#9;30000"
     </div>
 
     <!-- Rental rates -->
+    {% if pricing_enabled() %}
     <div style="margin-bottom:.9rem">
       <div class="form-section-title" style="margin-bottom:.5rem">Rental Rates ({{ get_rate_currency() }})</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
@@ -446,6 +482,7 @@ Dagger - Code M (2)&#9;Dagger&#9;Dagger Code M&#9;M&#9;30000&#9;30000"
         </div>
       </div>
     </div>
+    {% endif %}
 
     <!-- Condition notes -->
     <div class="form-group" style="margin-bottom:1.25rem">
@@ -465,10 +502,12 @@ Dagger - Code M (2)&#9;Dagger&#9;Dagger Code M&#9;M&#9;30000&#9;30000"
 
 {% block scripts %}
 <script>
-function openInvModal(itemId, status, notes, qty, hourly, halfday, fullday, multiday) {
+function openInvModal(itemId, status, notes, qty, hourly, halfday, fullday, multiday, name, category) {
   document.getElementById('inv-modal-id').textContent = itemId;
   document.getElementById('inv-form-id').value = itemId;
   document.getElementById('inv-modal-action').action = '/inventory/' + encodeURIComponent(itemId) + '/update';
+  document.getElementById('inv-name-input').value     = name     || '';
+  document.getElementById('inv-category-input').value = category || '';
   document.getElementById('inv-status-select').value = status;
   document.getElementById('inv-notes-input').value = notes || '';
   document.getElementById('inv-qty-input').value = qty || 1;

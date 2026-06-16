@@ -4,54 +4,76 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% if success %}Connected{% else %}Sign-in Failed{% endif %} — Pucon Kayak Retreat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=Open+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #f8fafc;
+      font-family: 'Open Sans', -apple-system, sans-serif;
+      background: #f0f7f9;
       display: flex;
       align-items: center;
       justify-content: center;
       min-height: 100vh;
       padding: 2rem;
+      color: #1a3a45;
     }
     .card {
       background: #fff;
-      border-radius: 12px;
-      box-shadow: 0 4px 24px rgba(0,0,0,.08);
-      padding: 2.5rem 2rem;
+      border-radius: 14px;
+      box-shadow: 0 4px 32px rgba(15,61,74,.10);
+      padding: 2.5rem 2.25rem;
       max-width: 420px;
       width: 100%;
       text-align: center;
+      border-top: 4px solid #40C1E8;
     }
-    .icon { font-size: 3rem; margin-bottom: 1rem; }
-    h1 { font-size: 1.4rem; margin-bottom: .5rem; color: #0f172a; }
-    p  { color: #64748b; font-size: .95rem; line-height: 1.5; }
+    .brand {
+      font-family: 'Montserrat', sans-serif;
+      font-size: .75rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: #40C1E8;
+      margin-bottom: 1.5rem;
+    }
+    .icon { font-size: 2.75rem; margin-bottom: 1rem; }
+    h1 {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 1.35rem;
+      font-weight: 800;
+      margin-bottom: .5rem;
+      color: #0f3d4a;
+    }
+    p { color: #4a6a76; font-size: .9rem; line-height: 1.6; }
     .success h1 { color: #16a34a; }
     .error   h1 { color: #dc2626; }
     .hint {
-      margin-top: 1.25rem;
-      font-size: .82rem;
-      color: #94a3b8;
+      margin-top: 1.1rem;
+      font-size: .8rem;
+      color: #7da5b0;
     }
     pre {
-      background: #f1f5f9;
-      border-radius: 6px;
-      padding: .6rem .8rem;
-      font-size: .75rem;
+      background: #f0f7f9;
+      border-radius: 8px;
+      border: 1px solid #d0e8ef;
+      padding: .65rem .9rem;
+      font-size: .73rem;
       text-align: left;
       overflow: auto;
-      margin-top: .5rem;
-      color: #475569;
+      margin-top: .6rem;
+      color: #2e5c6e;
     }
   </style>
 </head>
 <body>
   <div class="card {% if success %}success{% else %}error{% endif %}">
+    <div class="brand">Pucon Kayak Retreat</div>
     {% if success %}
       <div class="icon">✅</div>
       <h1>Google account connected!</h1>
-      <p>You can close this browser tab and return to the Pucon Kayak Retreat app.</p>
+      <p>You can close this browser tab and return to the app.</p>
       <p class="hint">The app will update automatically.</p>
     {% else %}
       <div class="icon">❌</div>
