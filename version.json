@@ -1,5 +1,5 @@
 {
-  "version": "1.0.6",
-  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.0.6/PuconKayakRetreat.dmg",
-  "release_notes": "Fix reservations page crash (stray endblock tag)"
+  "version": "1.1.0",
+  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.1.0/PuconKayakRetreat.dmg",
+  "release_notes": "Waiver uploads, discount breakdown, equipment-per-day calendar view, inventory quantity column, PDF invoice export, and an optional Settings toggle to hide pricing app-wide"
 }

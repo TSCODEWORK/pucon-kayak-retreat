@@ -24,8 +24,9 @@ from pathlib import Path
 from datetime import datetime, date, timedelta
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    session, flash, jsonify,
+    session, flash, jsonify, send_from_directory,
 )
+from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 from utils import _parse_dt  # single source of truth
 from db import DatabaseClient, DatabaseError
@@ -34,7 +35,7 @@ from sync import SheetsSyncer
 
 log = logging.getLogger(__name__)
 
-APP_VERSION = "1.0.6"
+APP_VERSION = "1.1.0"
 
 # OAuth2 over HTTP is fine for localhost (Desktop app running on the user's machine)
 os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
@@ -47,6 +48,10 @@ _BASE = Path(os.environ.get("PKR_BASE_DIR", Path(__file__).parent))
 # Load .env — main.py loads it first (from App Support dir), so this is a no-op
 # when running bundled; it loads .env from CWD when running directly.
 load_dotenv()
+
+# Waiver uploads live alongside rental.db in App Support (created on first use)
+_WAIVERS_DIR = Path(os.environ.get("PKR_DB_PATH", ".")) / "waivers"
+_ALLOWED_WAIVER_EXT = {"pdf", "jpg", "jpeg", "png"}
 
 app = Flask(
     __name__,
@@ -108,6 +113,10 @@ def get_display_currency():
 def get_rate_currency():
     """Returns the currency in which item rates are stored in the DB (default 'CLP')."""
     return db.get_settings().get("rate_currency", "CLP")
+
+def pricing_enabled():
+    """Returns True unless staff have explicitly turned pricing tracking off in Settings."""
+    return db.get_settings().get("pricing_enabled", "1") != "0"
 
 # Load startup settings for one-time init (sheet ID, OAuth token)
 _startup_settings = db.get_settings()
@@ -390,6 +399,15 @@ def dashboard():
         for r in _all_res
         if r.get("Reservation Status", "") != "Canceled"
     ]
+    # Item ID → display name lookup, used by the dashboard calendar to show
+    # which specific equipment is reserved on a given day.
+    try:
+        item_name_map = {
+            i.get("Item ID", ""): i.get("Name/Description") or i.get("Item ID", "")
+            for i in db.get_inventory()
+        }
+    except Exception:
+        item_name_map = {}
 
     return render_template(
         "dashboard.html",
@@ -410,6 +428,7 @@ def dashboard():
         month_stats=month_stats,
         month_days=month_days,
         calendar_reservations=calendar_reservations,
+        item_name_map=item_name_map,
         sheets_error=sheets_error,
     )
 
@@ -738,11 +757,15 @@ def reservation_detail(res_id):
                         "Start Date & Time": start_str,
                         "End Date & Time": end_str,
                         "Rental Type": request.form.get("rental_type", ""),
-                        "Payment Status": request.form.get("payment_status", "Unpaid"),
-                        "Payment Amount": str(pay_amt),
                         "Waiver Signed": "Yes" if request.form.get("waiver_signed") else "No",
                         "Notes": request.form.get("notes", "").strip(),
                     }
+                    # Payment fields are hidden from the form when pricing is
+                    # disabled — only touch them if the form actually sent them.
+                    if "payment_status" in request.form:
+                        updates["Payment Status"] = request.form.get("payment_status", "Unpaid")
+                    if "payment_amount" in request.form:
+                        updates["Payment Amount"] = str(pay_amt)
                     db.update_reservation(res_id, updates)
                     _sync()
                     flash("Reservation updated.", "success")
@@ -1288,6 +1311,11 @@ def settings_view():
             })
             flash("General settings saved.", "success")
 
+        elif action == "toggle_pricing":
+            new_val = "0" if pricing_enabled() else "1"
+            db.update_settings({"pricing_enabled": new_val})
+            flash("Pricing tracking " + ("enabled." if new_val == "1" else "disabled. Rates and totals are now hidden — your data is preserved."), "success")
+
         elif action == "update_sheet_url":
             raw_url = request.form.get("sheet_url", "").strip()
             # Accept full editor URL or bare sheet ID
@@ -1454,6 +1482,7 @@ app.jinja_env.globals["app_version"] = APP_VERSION
 app.jinja_env.globals["get_display_currency"] = get_display_currency
 app.jinja_env.globals["get_rate_currency"] = get_rate_currency
 app.jinja_env.globals["get_clp_rate"] = _get_clp_rate
+app.jinja_env.globals["pricing_enabled"] = pricing_enabled
 
 
 @app.route("/api/toggle-currency", methods=["POST"])
@@ -1624,6 +1653,9 @@ def oauth_google_disconnect():
 @app.route("/reservations/<res_id>/apply-discount", methods=["POST"])
 @login_required
 def apply_discount(res_id):
+    if not pricing_enabled():
+        flash("Pricing tracking is turned off — enable it in Settings to apply discounts.", "error")
+        return redirect(url_for("reservation_detail", res_id=res_id))
     try:
         pct = int(request.form.get("discount_pct", "0"))
         if pct not in (5, 10, 15, 20, 25):
@@ -1642,17 +1674,265 @@ def apply_discount(res_id):
         if discounted <= 0:
             flash("Discount would reduce the total to $0 or less — not applied.", "error")
             return redirect(url_for("reservation_detail", res_id=res_id))
-        notes_existing = reservation.get("Notes", "")
-        discount_note = f"\n[{pct}% extended rental discount applied — original amount: ${current_amount:.2f}]"
         db.update_reservation(res_id, {
             "Payment Amount": str(discounted),
-            "Notes": (notes_existing + discount_note).strip(),
+            "Original Payment Amount": str(current_amount),
+            "Discount Percent": str(pct),
         })
         _sync()
         flash(f"{pct}% discount applied — new total: ${discounted:.2f}", "success")
     except Exception as e:
         flash(f"Error applying discount: {e}", "error")
     return redirect(url_for("reservation_detail", res_id=res_id))
+
+
+# ── Waiver uploads ──────────────────────────────────────────────────────────────
+
+@app.route("/reservations/<res_id>/waiver/upload", methods=["POST"])
+@login_required
+def upload_waiver(res_id):
+    try:
+        file = request.files.get("waiver_file")
+        if not file or not file.filename:
+            flash("No file selected.", "error")
+            return redirect(url_for("reservation_detail", res_id=res_id))
+
+        ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+        if ext not in _ALLOWED_WAIVER_EXT:
+            flash("Waivers must be a PDF, JPG, or PNG file.", "error")
+            return redirect(url_for("reservation_detail", res_id=res_id))
+
+        all_res = db.get_reservations(force_refresh=True)
+        reservation = next((r for r in all_res if str(r.get("Reservation ID")) == res_id), None)
+        if not reservation:
+            flash("Reservation not found.", "error")
+            return redirect(url_for("reservations"))
+
+        _WAIVERS_DIR.mkdir(parents=True, exist_ok=True)
+        # Remove any previous waiver file for this reservation before saving the new one
+        old_file = reservation.get("Waiver File", "")
+        if old_file:
+            old_path = _WAIVERS_DIR / old_file
+            if old_path.exists():
+                old_path.unlink()
+
+        safe_res_id = secure_filename(res_id)
+        filename = f"{safe_res_id}_{_secrets.token_hex(4)}.{ext}"
+        file.save(str(_WAIVERS_DIR / filename))
+
+        db.update_reservation(res_id, {
+            "Waiver File": filename,
+            "Waiver Signed": "Yes",
+        })
+        _sync()
+        flash("Waiver uploaded.", "success")
+    except Exception as e:
+        flash(f"Error uploading waiver: {e}", "error")
+    return redirect(url_for("reservation_detail", res_id=res_id))
+
+
+@app.route("/reservations/<res_id>/waiver/view")
+@login_required
+def view_waiver(res_id):
+    all_res = db.get_reservations()
+    reservation = next((r for r in all_res if str(r.get("Reservation ID")) == res_id), None)
+    filename = reservation.get("Waiver File", "") if reservation else ""
+    if not filename:
+        flash("No waiver on file.", "error")
+        return redirect(url_for("reservation_detail", res_id=res_id))
+    return send_from_directory(str(_WAIVERS_DIR), filename)
+
+
+@app.route("/reservations/<res_id>/waiver/remove", methods=["POST"])
+@login_required
+def remove_waiver(res_id):
+    try:
+        all_res = db.get_reservations(force_refresh=True)
+        reservation = next((r for r in all_res if str(r.get("Reservation ID")) == res_id), None)
+        if not reservation:
+            flash("Reservation not found.", "error")
+            return redirect(url_for("reservations"))
+        filename = reservation.get("Waiver File", "")
+        if filename:
+            path = _WAIVERS_DIR / filename
+            if path.exists():
+                path.unlink()
+        db.update_reservation(res_id, {"Waiver File": ""})
+        _sync()
+        flash("Waiver removed.", "success")
+    except Exception as e:
+        flash(f"Error removing waiver: {e}", "error")
+    return redirect(url_for("reservation_detail", res_id=res_id))
+
+
+# ── PDF invoice export ──────────────────────────────────────────────────────────
+
+def _build_invoice_pdf(reservation: dict, reserved_items: list) -> bytes:
+    """Render a printable invoice/booking summary PDF for a reservation."""
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.units import inch
+    from reportlab.lib import colors
+    from reportlab.pdfgen import canvas as pdfcanvas
+
+    buf = io.BytesIO()
+    c = pdfcanvas.Canvas(buf, pagesize=letter)
+    width, height = letter
+    brand = colors.HexColor("#0f3d4a")
+    teal = colors.HexColor("#40C1E8")
+    muted = colors.HexColor("#64748b")
+
+    settings = db.get_settings()
+    business_name = settings.get("business_name", "").strip() or "Pucon Kayak Retreat"
+    show_pricing = pricing_enabled()
+
+    y = height - 0.85 * inch
+
+    # Header
+    c.setFillColor(brand)
+    c.setFont("Helvetica-Bold", 20)
+    c.drawString(0.75 * inch, y, business_name)
+    c.setFillColor(teal)
+    c.setFont("Helvetica-Bold", 10)
+    c.drawRightString(width - 0.75 * inch, y, "RENTAL AGREEMENT" if not show_pricing else "INVOICE")
+    y -= 0.22 * inch
+    c.setFillColor(muted)
+    c.setFont("Helvetica", 9)
+    c.drawRightString(width - 0.75 * inch, y, f"Reservation: {reservation.get('Reservation ID','')}")
+    y -= 0.15 * inch
+    c.drawRightString(width - 0.75 * inch, y, f"Date issued: {datetime.now().strftime('%b %d, %Y')}")
+
+    y -= 0.35 * inch
+    c.setStrokeColor(colors.HexColor("#e2e8f0"))
+    c.line(0.75 * inch, y, width - 0.75 * inch, y)
+    y -= 0.35 * inch
+
+    # Customer block
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(0.75 * inch, y, "Customer")
+    y -= 0.2 * inch
+    c.setFont("Helvetica", 10)
+    c.drawString(0.75 * inch, y, reservation.get("Customer Name", "—"))
+    y -= 0.16 * inch
+    contact = " · ".join(filter(None, [reservation.get("Customer Phone", ""), reservation.get("Customer Email", "")]))
+    if contact:
+        c.setFillColor(muted)
+        c.drawString(0.75 * inch, y, contact)
+        c.setFillColor(colors.black)
+        y -= 0.16 * inch
+
+    y -= 0.15 * inch
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(0.75 * inch, y, "Rental Window")
+    y -= 0.2 * inch
+    c.setFont("Helvetica", 10)
+    c.drawString(0.75 * inch, y, f"Check-out:  {fmt_datetime(reservation.get('Start Date & Time',''))}")
+    y -= 0.16 * inch
+    c.drawString(0.75 * inch, y, f"Return by:  {fmt_datetime(reservation.get('End Date & Time',''))}")
+    y -= 0.16 * inch
+    c.drawString(0.75 * inch, y, f"Rental Type:  {reservation.get('Rental Type','—')}")
+
+    y -= 0.4 * inch
+    c.setStrokeColor(colors.HexColor("#e2e8f0"))
+    c.line(0.75 * inch, y, width - 0.75 * inch, y)
+    y -= 0.3 * inch
+
+    # Equipment table header
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(0.75 * inch, y, "Equipment")
+    y -= 0.25 * inch
+    c.setFont("Helvetica-Bold", 8)
+    c.setFillColor(muted)
+    col_id, col_name, col_cat, col_rate = 0.75 * inch, 2.1 * inch, 4.6 * inch, 6.1 * inch
+    c.drawString(col_id, y, "ITEM ID")
+    c.drawString(col_name, y, "DESCRIPTION")
+    c.drawString(col_cat, y, "CATEGORY")
+    if show_pricing:
+        c.drawString(col_rate, y, "FULL-DAY RATE")
+    y -= 0.08 * inch
+    c.setStrokeColor(colors.HexColor("#e2e8f0"))
+    c.line(0.75 * inch, y, width - 0.75 * inch, y)
+    y -= 0.2 * inch
+
+    c.setFont("Helvetica", 9)
+    c.setFillColor(colors.black)
+    for item in reserved_items:
+        if y < 1.5 * inch:
+            c.showPage()
+            y = height - 0.85 * inch
+        c.drawString(col_id, y, str(item.get("Item ID", ""))[:22])
+        c.drawString(col_name, y, str(item.get("Name/Description", ""))[:30])
+        c.drawString(col_cat, y, str(item.get("Category", ""))[:18])
+        if show_pricing and item.get("Full-Day Rate"):
+            c.drawString(col_rate, y, fmt_price(item.get("Full-Day Rate"), get_display_currency()))
+        y -= 0.2 * inch
+
+    y -= 0.2 * inch
+    c.setStrokeColor(colors.HexColor("#e2e8f0"))
+    c.line(0.75 * inch, y, width - 0.75 * inch, y)
+    y -= 0.35 * inch
+
+    # Payment block
+    if show_pricing:
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(0.75 * inch, y, "Payment")
+        y -= 0.22 * inch
+        c.setFont("Helvetica", 10)
+        c.drawString(0.75 * inch, y, f"Status: {reservation.get('Payment Status','Unpaid')}")
+        y -= 0.16 * inch
+        if reservation.get("Discount Percent"):
+            c.setFillColor(muted)
+            c.drawString(0.75 * inch, y, f"Original: {fmt_currency(reservation.get('Original Payment Amount'))}  ·  Discount: {reservation.get('Discount Percent')}%")
+            c.setFillColor(colors.black)
+            y -= 0.18 * inch
+        c.setFont("Helvetica-Bold", 14)
+        c.setFillColor(brand)
+        c.drawString(0.75 * inch, y, f"Total: {fmt_currency(reservation.get('Payment Amount'))}")
+        c.setFillColor(colors.black)
+        y -= 0.35 * inch
+    else:
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(0.75 * inch, y, "Waiver")
+        y -= 0.22 * inch
+        c.setFont("Helvetica", 10)
+        signed = "Signed" if reservation.get("Waiver Signed") == "Yes" else "Not signed"
+        c.drawString(0.75 * inch, y, signed)
+        y -= 0.35 * inch
+
+    # Footer
+    c.setFont("Helvetica", 8)
+    c.setFillColor(muted)
+    c.drawCentredString(width / 2, 0.6 * inch, f"{business_name} — Generated by Pucon Kayak Retreat staff portal")
+
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+@app.route("/reservations/<res_id>/invoice.pdf")
+@login_required
+def reservation_invoice_pdf(res_id):
+    all_res = db.get_reservations()
+    reservation = next((r for r in all_res if str(r.get("Reservation ID")) == res_id), None)
+    if not reservation:
+        flash("Reservation not found.", "error")
+        return redirect(url_for("reservations"))
+    inventory = db.get_inventory()
+    item_ids = _split_item_ids(reservation.get("Item IDs", ""))
+    reserved_items = [i for i in inventory if str(i.get("Item ID")) in item_ids]
+
+    try:
+        pdf_bytes = _build_invoice_pdf(reservation, reserved_items)
+    except Exception as e:
+        flash(f"Error generating PDF: {e}", "error")
+        return redirect(url_for("reservation_detail", res_id=res_id))
+
+    from flask import Response
+    return Response(
+        pdf_bytes,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{res_id}_invoice.pdf"'},
+    )
 
 
 # ── Auto-update ───────────────────────────────────────────────────────────────
