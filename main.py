@@ -22,6 +22,17 @@ BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
 # Tell app.py where templates/static live
 os.environ["PKR_BASE_DIR"] = str(BASE_DIR)
 
+# Detect the actual running .app bundle path so the updater knows where to copy
+# sys.executable inside a frozen bundle is e.g.
+#   /Applications/PuconKayakRetreat.app/Contents/MacOS/PuconKayakRetreat
+_app_bundle = None
+for _p in [Path(sys.executable)] + list(Path(sys.executable).parents):
+    if _p.suffix == ".app":
+        _app_bundle = _p
+        break
+if _app_bundle and _app_bundle.exists():
+    os.environ["PKR_APP_PATH"] = str(_app_bundle)
+
 # Tell db.py where to store rental.db (set before app.py is imported)
 # P-9: single constant, mkdir called immediately.
 APP_SUPPORT = Path.home() / "Library" / "Application Support" / "PuconKayakRetreat"

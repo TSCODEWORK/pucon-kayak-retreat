@@ -387,10 +387,8 @@ function checkUpdates(btn) {
 
 function installFromSettings() {
   if (!window._settingsUpdateUrl) return;
-  // Hand off to the existing banner's download flow
-  window._downloadUrl = window._settingsUpdateUrl;
+  window.updSetUrl(window._settingsUpdateUrl);
   window.updDownload();
-  document.getElementById('update-banner').style.display = '';
 }
 </script>
 {% endblock %}

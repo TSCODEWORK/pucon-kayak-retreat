@@ -37,7 +37,7 @@ from sync import SheetsSyncer
 
 log = logging.getLogger(__name__)
 
-APP_VERSION = "1.2.9"
+APP_VERSION = "1.3.0"
 
 # OAuth2 over HTTP is fine for localhost (Desktop app running on the user's machine)
 os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
@@ -2117,20 +2117,48 @@ def api_update_install():
 
     mount_point = "/tmp/pkr_update_vol"
 
+    # Where is the running .app bundle?
+    app_dest = os.environ.get("PKR_APP_PATH", "/Applications/PuconKayakRetreat.app")
+
     # Shell script runs *after* this process exits:
-    #   1. Waits for the app to quit
-    #   2. Copies the new .app over the old one
-    #   3. Detaches the DMG volume
-    #   4. Relaunches the app
+    #   1. Waits for the app to fully quit (polls until the process is gone)
+    #   2. Cleans up any stale mount from a previous attempt
+    #   3. Mounts the new DMG
+    #   4. Uses ditto (not cp -r) to replace the .app in-place
+    #   5. Strips quarantine so macOS doesn't block the relaunch
+    #   6. Detaches the DMG and removes the temp file
+    #   7. Relaunches from the same path the app was running from
     script = f"""#!/bin/bash
-sleep 3
-hdiutil attach "{dmg_path}" -mountpoint "{mount_point}" -nobrowse -quiet 2>/dev/null
-if [ -d "{mount_point}/PuconKayakRetreat.app" ]; then
-    cp -r "{mount_point}/PuconKayakRetreat.app" /Applications/PuconKayakRetreat.app
+set -e
+
+# Wait up to 30 s for this PID to exit
+for i in $(seq 1 30); do
+    kill -0 {os.getpid()} 2>/dev/null || break
+    sleep 1
+done
+
+# Clean up any stale mount from a previous failed attempt
+hdiutil detach "{mount_point}" -force -quiet 2>/dev/null || true
+rm -rf "{mount_point}"
+
+# Mount the new DMG
+hdiutil attach "{dmg_path}" -mountpoint "{mount_point}" -nobrowse -quiet
+
+SRC="{mount_point}/PuconKayakRetreat.app"
+DST="{app_dest}"
+
+if [ -d "$SRC" ]; then
+    # Remove old bundle first so ditto doesn't merge stale files
+    rm -rf "$DST"
+    ditto "$SRC" "$DST"
+    # Strip quarantine so Gatekeeper doesn't block relaunch
+    xattr -cr "$DST" 2>/dev/null || true
 fi
-hdiutil detach "{mount_point}" -quiet 2>/dev/null
+
+hdiutil detach "{mount_point}" -quiet 2>/dev/null || true
 rm -f "{dmg_path}"
-open /Applications/PuconKayakRetreat.app
+
+open "$DST"
 """
     script_path = "/tmp/pkr_updater.sh"
     with open(script_path, "w") as f:

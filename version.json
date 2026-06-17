@@ -1,5 +1,5 @@
 {
-  "version": "1.2.9",
-  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.2.9/PuconKayakRetreat.dmg",
-  "release_notes": "Bundle pre-seeded inventory DB (54 items) — first launch copies it to App Support so new installs start with full equipment catalogue"
+  "version": "1.3.0",
+  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.3.0/PuconKayakRetreat.dmg",
+  "release_notes": "Fix update system: correct closure variable bug, check POST response before polling, detect actual app install path, use ditto+rm instead of cp, strip quarantine, clean stale mounts, resume banner on page reload"
 }

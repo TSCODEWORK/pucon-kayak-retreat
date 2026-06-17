@@ -124,11 +124,12 @@
 
 <script>
 (function(){
-  const CURRENT  = '{{ app_version }}';
-  const KEY      = 'pkr_upd_dismissed_' + CURRENT;
-  if (sessionStorage.getItem(KEY)) return;
+  const CURRENT = '{{ app_version }}';
+  const KEY     = 'pkr_upd_dismissed_' + CURRENT;
 
+  // _downloadUrl is shared with installFromSettings via window.updSetUrl()
   let _downloadUrl = '';
+  let _pollTimer   = null;
 
   function show(id) {
     ['upd-available','upd-downloading','upd-ready','upd-error'].forEach(i => {
@@ -137,53 +138,92 @@
     document.getElementById('update-banner').style.display = '';
   }
 
-  // Check for updates on every page load (silently)
-  fetch('/api/update/check', { cache: 'no-store' })
+  function startPoll() {
+    if (_pollTimer) return;
+    _pollTimer = setInterval(() => {
+      fetch('/api/update/progress')
+        .then(r => r.json())
+        .then(d => {
+          document.getElementById('upd-bar').style.width  = d.progress + '%';
+          document.getElementById('upd-pct').textContent  = d.progress + '%';
+          if (d.status === 'ready') {
+            clearInterval(_pollTimer); _pollTimer = null;
+            show('upd-ready');
+          } else if (d.status === 'error') {
+            clearInterval(_pollTimer); _pollTimer = null;
+            document.getElementById('upd-error-msg').textContent = d.error || 'Unknown error';
+            show('upd-error');
+          }
+        })
+        .catch(() => {});
+    }, 800);
+  }
+
+  // On every page load: resume banner if a download is already in progress
+  fetch('/api/update/progress')
     .then(r => r.json())
-    .then(data => {
-      if (!data.update_available) return;
-      _downloadUrl = data.download_url || '';
-      document.getElementById('upd-notes').textContent = data.release_notes || '';
-      document.getElementById('upd-version-tag').textContent = 'v' + data.version;
-      show('upd-available');
+    .then(d => {
+      if (d.status === 'downloading') { show('upd-downloading'); startPoll(); }
+      else if (d.status === 'ready')  { show('upd-ready'); }
     })
     .catch(() => {});
+
+  // Check for a newer version (silently) — skip if already dismissed this version
+  if (!sessionStorage.getItem(KEY)) {
+    fetch('/api/update/check', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.update_available) return;
+        _downloadUrl = data.download_url || '';
+        document.getElementById('upd-notes').textContent    = data.release_notes || '';
+        document.getElementById('upd-version-tag').textContent = 'v' + data.version;
+        // Don't overwrite an in-progress download banner
+        fetch('/api/update/progress').then(r => r.json()).then(d => {
+          if (d.status === 'idle' || d.status === 'error') show('upd-available');
+        }).catch(() => show('upd-available'));
+      })
+      .catch(() => {});
+  }
 
   document.getElementById('upd-dismiss').addEventListener('click', () => {
     document.getElementById('update-banner').style.display = 'none';
     sessionStorage.setItem(KEY, '1');
   });
 
+  // Called by Settings page — sets the URL then triggers download
+  window.updSetUrl = function(url) { _downloadUrl = url; };
+
   window.updDownload = function() {
+    if (!_downloadUrl) {
+      console.error('PKR updater: no download URL set');
+      return;
+    }
     show('upd-downloading');
     fetch('/api/update/download', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ download_url: _downloadUrl }),
+    })
+    .then(r => r.json())
+    .then(d => {
+      if (d.status === 'started' || d.status === 'already_downloading') {
+        startPoll();
+      } else {
+        document.getElementById('upd-error-msg').textContent = d.error || 'Failed to start download';
+        show('upd-error');
+      }
+    })
+    .catch(err => {
+      document.getElementById('upd-error-msg').textContent = 'Network error: ' + err;
+      show('upd-error');
     });
-    // Poll progress
-    const poll = setInterval(() => {
-      fetch('/api/update/progress')
-        .then(r => r.json())
-        .then(d => {
-          document.getElementById('upd-bar').style.width = d.progress + '%';
-          document.getElementById('upd-pct').textContent = d.progress + '%';
-          if (d.status === 'ready') {
-            clearInterval(poll);
-            show('upd-ready');
-          } else if (d.status === 'error') {
-            clearInterval(poll);
-            document.getElementById('upd-error-msg').textContent = d.error;
-            show('upd-error');
-          }
-        });
-    }, 800);
   };
 
   window.updInstall = function() {
     document.getElementById('upd-ready').innerHTML =
       '<div style="text-align:center;padding:.5rem 0">🔄 Installing… app will relaunch shortly.</div>';
-    fetch('/api/update/install', { method: 'POST' });
+    fetch('/api/update/install', { method: 'POST' })
+      .catch(() => {});
   };
 })();
 </script>
