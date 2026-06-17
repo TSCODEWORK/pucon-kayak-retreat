@@ -1,5 +1,5 @@
 {
-  "version": "1.2.2",
-  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.2.2/PuconKayakRetreat.dmg",
-  "release_notes": "Fix inventory edit modal when pricing disabled; add Sync from Sheet button on Inventory page"
+  "version": "1.2.3",
+  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.2.3/PuconKayakRetreat.dmg",
+  "release_notes": "Add Check for Updates button in Settings"
 }

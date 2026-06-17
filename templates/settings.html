@@ -327,5 +327,69 @@
     </div>
   </div>
 
+  <!-- ── App version / update ── -->
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h3>App Version</h3>
+        <div class="text-sm text-muted">Current version and update check</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:600;font-size:1rem">v{{ app_version }}</div>
+          <div id="upd-settings-status" class="text-sm text-muted" style="margin-top:.25rem">—</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="checkUpdates(this)">Check for Updates</button>
+      </div>
+      <div id="upd-settings-install" style="display:none;margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+        <div id="upd-settings-notes" class="text-sm text-muted" style="margin-bottom:.75rem"></div>
+        <button class="btn btn-primary btn-sm" onclick="installFromSettings()">Download &amp; Install Update</button>
+      </div>
+    </div>
+  </div>
+
 </div>
+
+<script>
+function checkUpdates(btn) {
+  const status = document.getElementById('upd-settings-status');
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
+  status.textContent = '';
+  fetch('/api/update/check', { cache: 'no-store' })
+    .then(r => r.json())
+    .then(data => {
+      btn.disabled = false;
+      btn.textContent = 'Check for Updates';
+      if (data.error) {
+        status.textContent = 'Could not reach update server — check your internet connection.';
+        return;
+      }
+      if (data.update_available) {
+        status.innerHTML = '<span style="color:var(--green-600);font-weight:600">Update available: v' + data.version + '</span>';
+        document.getElementById('upd-settings-notes').textContent = data.release_notes || '';
+        document.getElementById('upd-settings-install').style.display = '';
+        window._settingsUpdateUrl = data.download_url;
+      } else {
+        status.textContent = 'You\'re up to date.';
+        document.getElementById('upd-settings-install').style.display = 'none';
+      }
+    })
+    .catch(() => {
+      btn.disabled = false;
+      btn.textContent = 'Check for Updates';
+      status.textContent = 'Could not reach update server — check your internet connection.';
+    });
+}
+
+function installFromSettings() {
+  if (!window._settingsUpdateUrl) return;
+  // Hand off to the existing banner's download flow
+  window._downloadUrl = window._settingsUpdateUrl;
+  window.updDownload();
+  document.getElementById('update-banner').style.display = '';
+}
+</script>
 {% endblock %}
