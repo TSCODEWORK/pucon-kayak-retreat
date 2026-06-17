@@ -36,7 +36,7 @@ from sync import SheetsSyncer
 
 log = logging.getLogger(__name__)
 
-APP_VERSION = "1.2.3"
+APP_VERSION = "1.2.4"
 
 # OAuth2 over HTTP is fine for localhost (Desktop app running on the user's machine)
 os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
@@ -2028,12 +2028,14 @@ _update_state: dict = {"status": "idle", "progress": 0, "error": ""}
 def api_update_check():
     """Return latest version info from GitHub."""
     try:
-        req = urllib.request.Request(
+        import requests as _requests
+        resp = _requests.get(
             VERSION_JSON_URL,
             headers={"User-Agent": "PKR-App/updater", "Cache-Control": "no-cache"},
+            timeout=8,
         )
-        with urllib.request.urlopen(req, timeout=6) as r:
-            data = json.loads(r.read())
+        resp.raise_for_status()
+        data = resp.json()
         data["current_version"] = APP_VERSION
         data["update_available"] = data.get("version", "") != APP_VERSION
         return jsonify(data)

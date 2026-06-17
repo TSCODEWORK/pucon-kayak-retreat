@@ -364,7 +364,7 @@ function checkUpdates(btn) {
       btn.disabled = false;
       btn.textContent = 'Check for Updates';
       if (data.error) {
-        status.textContent = 'Could not reach update server — check your internet connection.';
+        status.textContent = 'Update check failed: ' + data.error;
         return;
       }
       if (data.update_available) {
