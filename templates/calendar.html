@@ -22,13 +22,193 @@
   <span class="cal-event returned" style="position:static;display:inline-block">Returned</span>
 </div>
 
-<div class="card">
-  <div class="card-body">
-    <div id="calendar-root"></div>
+<div style="display:grid;grid-template-columns:1fr 340px;gap:1.25rem;align-items:start" id="cal-layout">
+
+  <!-- Calendar card -->
+  <div class="card">
+    <div class="card-body" style="padding-bottom:.75rem">
+      <!-- Month nav -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+        <button class="btn btn-ghost btn-sm" onclick="calNav(-1)">← Prev</button>
+        <span id="cal-month-title" style="font-weight:700;font-size:1rem"></span>
+        <div style="display:flex;gap:.5rem">
+          <button class="btn btn-ghost btn-sm" onclick="calGoToday()">Today</button>
+          <button class="btn btn-ghost btn-sm" onclick="calNav(1)">Next →</button>
+        </div>
+      </div>
+      <!-- Weekday headers -->
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:4px">
+        {% for d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
+          <div style="text-align:center;font-size:.68rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;padding:.2rem 0">{{ d }}</div>
+        {% endfor %}
+      </div>
+      <!-- Day grid -->
+      <div id="cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px"></div>
+      <!-- Legend -->
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.85rem;padding-top:.75rem;border-top:1px solid var(--border);align-items:center">
+        <span style="font-size:.72rem;color:var(--text-muted)">Reservations:</span>
+        <span style="display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem"><span style="width:12px;height:12px;border-radius:3px;background:#e2f8f5;border:1px solid var(--border);display:inline-block"></span>1</span>
+        <span style="display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem"><span style="width:12px;height:12px;border-radius:3px;background:#5eead4;display:inline-block"></span>2–3</span>
+        <span style="display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem"><span style="width:12px;height:12px;border-radius:3px;background:#0d9488;display:inline-block"></span>4+</span>
+        <span style="margin-left:auto;display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem"><span style="width:10px;height:10px;border-radius:50%;background:var(--brand);display:inline-block"></span>Today</span>
+      </div>
+    </div>
   </div>
+
+  <!-- Day detail panel -->
+  <div class="card" style="position:sticky;top:80px">
+    <div class="card-header" style="justify-content:space-between;align-items:flex-start;gap:.5rem">
+      <div id="cal-detail-title" style="font-weight:600;font-size:.9rem;line-height:1.4">Click a day to see reservations</div>
+      <a id="cal-detail-newbooking" href="/reservations/new" class="btn btn-primary btn-sm" style="display:none;white-space:nowrap;flex-shrink:0">+ New</a>
+    </div>
+    <div class="card-body" id="cal-detail-body">
+      <div class="empty-state" style="padding:1.5rem 0">Select any day on the calendar.</div>
+    </div>
+  </div>
+
 </div>
 
-<div id="cal-detail"></div>
+<style>
+@media (max-width: 860px) { #cal-layout { grid-template-columns: 1fr !important; } }
+.cal-res-row { display:flex;justify-content:space-between;align-items:center;gap:.5rem;padding:.4rem .6rem;background:var(--slate-50);border-radius:6px;font-size:.8rem;text-decoration:none;color:inherit;margin-bottom:.35rem }
+.cal-res-row:hover { background:var(--brand-50) }
+</style>
 
 <script id="cal-data" type="application/json">{{ cal_events | tojson }}</script>
+
+<script>
+(function(){
+  const EVENTS = JSON.parse(document.getElementById('cal-data').textContent);
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const SHORT_M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  // Build dayMap: date-string → [event, ...]
+  const dayMap = {};
+  function toDateStr(s) {
+    if (!s) return null;
+    const d = new Date(s.replace(' ','T'));
+    return isNaN(d) ? null : d.toISOString().slice(0,10);
+  }
+  for (const ev of EVENTS) {
+    const s = toDateStr(ev.start), e = toDateStr(ev.end);
+    if (!s) continue;
+    // Mark every day in the range
+    const start = new Date(s + 'T12:00:00'), end = new Date((e || s) + 'T12:00:00');
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const key = d.toISOString().slice(0,10);
+      (dayMap[key] = dayMap[key] || []).push(ev);
+    }
+  }
+
+  const todayDate = new Date();
+  const todayStr  = todayDate.toISOString().slice(0,10);
+  let viewYear  = todayDate.getFullYear();
+  let viewMonth = todayDate.getMonth();
+
+  function dateKey(y, m, d) { return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
+  function daysInMonth(y, m) { return new Date(y, m+1, 0).getDate(); }
+  // Monday-start offset (0=Mon … 6=Sun)
+  function firstOffset(y, m) { return (new Date(y, m, 1).getDay() + 6) % 7; }
+
+  function bgColor(n) {
+    if (n === 0) return '';
+    if (n === 1) return '#e2f8f5';
+    if (n <= 3)  return '#5eead4';
+    return '#0d9488';
+  }
+  function textColor(n) { return n >= 2 ? '#fff' : ''; }
+
+  function render() {
+    const y = viewYear, m = viewMonth;
+    document.getElementById('cal-month-title').textContent = `${MONTHS[m]} ${y}`;
+    const days = daysInMonth(y, m);
+    const offset = firstOffset(y, m);
+    let html = '';
+    for (let i = 0; i < offset; i++) html += '<div></div>';
+    for (let d = 1; d <= days; d++) {
+      const key = dateKey(y, m, d);
+      const list = dayMap[key] || [];
+      const n = list.length;
+      const isToday = key === todayStr;
+      const isPast  = key < todayStr;
+      const bg = bgColor(n);
+      const tc = textColor(n);
+      html += `<div onclick="selectDay('${key}')"
+        style="text-align:center;padding:.45rem .15rem;border-radius:5px;cursor:pointer;
+          border:${isToday ? '2px solid var(--brand-dark)' : '1px solid var(--border)'};
+          background:${bg || (isToday ? 'var(--brand-50)' : '')};
+          color:${tc || (isToday ? 'var(--brand-dark)' : 'var(--text)')};
+          font-weight:${isToday ? '800' : n > 0 ? '600' : '400'};
+          opacity:${isPast && !isToday ? '.6' : '1'};
+          transition:transform .1s,box-shadow .1s;position:relative"
+        onmouseover="this.style.transform='scale(1.07)';this.style.boxShadow='0 2px 8px rgba(0,0,0,.1)'"
+        onmouseout="this.style.transform='';this.style.boxShadow=''"
+        title="${n > 0 ? n + ' reservation' + (n!==1?'s':'') : ''}">
+        <div style="font-size:.82rem">${d}</div>
+        ${n > 0 ? `<div style="font-size:.6rem;font-weight:700;margin-top:.05rem;color:${tc||'var(--teal-700,#0f766e)'}">${n}</div>` : ''}
+      </div>`;
+    }
+    document.getElementById('cal-grid').innerHTML = html;
+  }
+
+  window.calNav = function(dir) {
+    viewMonth += dir;
+    if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+    if (viewMonth < 0)  { viewMonth = 11; viewYear--; }
+    document.getElementById('cal-detail-title').textContent = 'Click a day to see reservations';
+    document.getElementById('cal-detail-body').innerHTML = '<div class="empty-state" style="padding:1.5rem 0">Select any day on the calendar.</div>';
+    document.getElementById('cal-detail-newbooking').style.display = 'none';
+    render();
+  };
+
+  window.calGoToday = function() {
+    viewYear = todayDate.getFullYear();
+    viewMonth = todayDate.getMonth();
+    render();
+    selectDay(todayStr);
+  };
+
+  window.selectDay = function(key) {
+    const list = dayMap[key] || [];
+    const d = new Date(key + 'T12:00:00');
+    const label = d.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+    document.getElementById('cal-detail-title').textContent =
+      list.length ? `${list.length} reservation${list.length!==1?'s':''} · ${label}` : label;
+    const nbBtn = document.getElementById('cal-detail-newbooking');
+    nbBtn.href = `/reservations/new?start=${key}`;
+    nbBtn.style.display = '';
+
+    if (!list.length) {
+      document.getElementById('cal-detail-body').innerHTML =
+        '<div class="empty-state" style="padding:1.5rem 0">No reservations on this day.</div>';
+      return;
+    }
+
+    const fmt = s => {
+      if (!s) return '';
+      const dt = new Date(s.replace(' ','T'));
+      return isNaN(dt) ? s : dt.toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    };
+    const statusClass = {'Upcoming':'badge-upcoming','Checked Out':'badge-checked-out','Returned':'badge-returned','Canceled':'badge-canceled'};
+
+    let html = '<div>';
+    for (const r of list) {
+      const sc = statusClass[r.status] || 'badge-upcoming';
+      html += `<a href="/reservations/${r.id}" class="cal-res-row">
+        <div style="min-width:0">
+          <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.customer}</div>
+          <div style="font-size:.73rem;color:var(--text-muted)">${fmt(r.start)} → ${fmt(r.end)}</div>
+          ${r.items ? `<div style="font-size:.72rem;color:var(--text-muted);margin-top:.1rem">${r.items}</div>` : ''}
+        </div>
+        <span class="badge ${sc}" style="flex-shrink:0">${r.status}</span>
+      </a>`;
+    }
+    html += '</div>';
+    document.getElementById('cal-detail-body').innerHTML = html;
+  };
+
+  render();
+  selectDay(todayStr);
+})();
+</script>
 {% endblock %}

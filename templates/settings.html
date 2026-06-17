@@ -177,7 +177,7 @@
         <input type="hidden" name="action" value="update_general">
         <div class="form-group" style="margin-bottom:.85rem">
           <label class="form-label">Business Name</label>
-          <input class="form-control" type="text" name="business_name"
+          <input class="form-control" type="text" name="business_name" required
             value="{{ settings.get('business_name','Pucon Kayak Retreat') }}">
         </div>
         <div class="form-group" style="margin-bottom:1rem">
@@ -307,7 +307,8 @@
       <!-- Sync actions -->
       <div style="display:flex;gap:.75rem;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:1rem">
         <form method="POST" action="{{ url_for('api_pull') }}"
-          onsubmit="{% if not sheet_id or not google_connected %}alert('Complete Steps 1 and 2 first.'); return false;{% else %}return confirm('This syncs the latest data from Google Sheets into the app. It will update or add items — it will not delete your local reservations. Continue?');{% endif %}">
+          {% if sheet_id and google_connected %}data-confirm="This syncs the latest data from Google Sheets into the app. It will update or add items — it will not delete your local reservations. Continue?"{% endif %}
+          onsubmit="{% if not sheet_id or not google_connected %}alert('Complete Steps 1 and 2 first.'); return false;{% endif %}">
           <button type="submit" class="btn btn-warning"
             {% if not sheet_id or not google_connected %}title="Complete setup first" disabled{% endif %}>
             ↓ Pull from Sheets

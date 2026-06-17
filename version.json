@@ -1,5 +1,5 @@
 {
-  "version": "1.2.4",
-  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.2.4/PuconKayakRetreat.dmg",
-  "release_notes": "Fix update check using requests instead of urllib for better SSL compatibility"
+  "version": "1.2.5",
+  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.2.5/PuconKayakRetreat.dmg",
+  "release_notes": "Fix Calendar page (now fully functional), sign-out confirm, two-click confirm dialogs, search clear, business name validation"
 }

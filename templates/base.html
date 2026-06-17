@@ -44,7 +44,8 @@
         {{ cur }} <span style="opacity:.55;font-size:.75em">⇄ {{ 'CLP' if cur == 'USD' else 'USD' }}</span>
       </button>
     </form>
-    <a href="{{ url_for('logout') }}" class="nav-link nav-logout">Sign Out</a>
+    <a href="{{ url_for('logout') }}" class="nav-link nav-logout"
+      data-confirm="Sign out of the staff portal?">Sign Out</a>
   </div>
 </nav>
 
@@ -199,5 +200,71 @@ document.querySelectorAll('.flash.flash-success').forEach(function(el) {
 </script>
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 {% block scripts %}{% endblock %}
+
+<!-- ── Custom confirm modal (replaces window.confirm to fix pywebview two-click bug) ── -->
+<div id="pkr-confirm-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10000;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;padding:1.5rem;max-width:380px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+    <div id="pkr-confirm-msg" style="font-size:.95rem;line-height:1.5;margin-bottom:1.25rem;white-space:pre-wrap"></div>
+    <div style="display:flex;gap:.75rem;justify-content:flex-end">
+      <button id="pkr-confirm-no"  class="btn btn-ghost">Cancel</button>
+      <button id="pkr-confirm-yes" class="btn btn-primary" id="pkr-confirm-yes">Confirm</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  const overlay = document.getElementById('pkr-confirm-overlay');
+  const msgEl   = document.getElementById('pkr-confirm-msg');
+  const yesBtn  = document.getElementById('pkr-confirm-yes');
+  const noBtn   = document.getElementById('pkr-confirm-no');
+  let _cb = null;
+
+  window.pkrConfirm = function(message, onYes, yesLabel) {
+    msgEl.textContent = message;
+    yesBtn.textContent = yesLabel || 'Confirm';
+    overlay.style.display = 'flex';
+    _cb = onYes || null;
+  };
+
+  function dismiss(run) {
+    overlay.style.display = 'none';
+    const cb = _cb; _cb = null;
+    if (run && cb) cb();
+  }
+
+  yesBtn.addEventListener('click', () => dismiss(true));
+  noBtn.addEventListener('click',  () => dismiss(false));
+  overlay.addEventListener('click', e => { if (e.target === overlay) dismiss(false); });
+
+  // Global interceptor: forms with data-confirm="msg" use pkrConfirm instead of native dialog
+  document.addEventListener('submit', function(e) {
+    const form = e.target;
+    const msg = form.dataset.confirm;
+    if (!msg || form._pkrOk) { form._pkrOk = false; return; }
+    e.preventDefault();
+    pkrConfirm(msg, () => { form._pkrOk = true; form.submit(); });
+  }, true);
+
+  // Global interceptor: links/buttons with data-confirm (non-form-submit)
+  document.addEventListener('click', function(e) {
+    const el = e.target.closest('[data-confirm]');
+    if (!el) return;
+    // If it's a submit button whose form has data-confirm, the form interceptor handles it
+    if (el.tagName === 'BUTTON' && el.type === 'submit' && el.closest('form[data-confirm]')) return;
+    // If it's a submit button not inside a data-confirm form, handle here
+    if (el.tagName === 'BUTTON' && el.type === 'submit') {
+      e.preventDefault();
+      pkrConfirm(el.dataset.confirm, () => { el.closest('form').submit(); });
+      return;
+    }
+    // Links
+    if (el.tagName === 'A') {
+      e.preventDefault();
+      const href = el.href;
+      pkrConfirm(el.dataset.confirm, () => { window.location = href; });
+    }
+  });
+})();
+</script>
 </body>
 </html>

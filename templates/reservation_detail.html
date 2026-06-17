@@ -41,11 +41,11 @@
   {% set item_count = item_ids | length %}
   {% if st == 'Upcoming' %}
     {% set waiver_ok = reservation.get('Waiver Signed','') == 'Yes' %}
-    <form method="POST" style="display:inline"
-      onsubmit="return checkOutConfirm({{ item_count }}, {{ cname | tojson }}, {{ waiver_ok | tojson }})">
+    <form method="POST" style="display:inline" id="checkout-form">
       <input type="hidden" name="action" value="update_status">
       <input type="hidden" name="status" value="Checked Out">
-      <button type="submit" class="btn btn-warning">✓ Check Out</button>
+      <button type="button" class="btn btn-warning"
+        onclick="checkOutConfirm({{ item_count }}, {{ cname | tojson }}, {{ waiver_ok | tojson }})">✓ Check Out</button>
     </form>
 
   {% elif st == 'Checked Out' %}
@@ -84,7 +84,7 @@
   </div>
   {% if st not in ('Returned','Canceled') %}
   <form method="POST" action="{{ url_for('apply_discount', res_id=reservation.get('Reservation ID')) }}"
-    onsubmit="return confirm('Apply {{ discount_pct }}% discount to the total? This will update the payment amount.')">
+    data-confirm="Apply {{ discount_pct }}% discount to the total? This will update the payment amount.">
     <input type="hidden" name="discount_pct" value="{{ discount_pct }}">
     <button type="submit" class="btn btn-success" style="white-space:nowrap">
       Apply {{ discount_pct }}% Off
@@ -343,8 +343,8 @@
           </div>
 
           <div style="display:flex;gap:.75rem;flex-wrap:wrap">
-            <button type="submit" class="btn btn-primary"
-              onclick="return confirm('Save changes to this reservation?')">Save Changes</button>
+            <button type="button" class="btn btn-primary"
+              onclick="pkrConfirm('Save changes to this reservation?', () => document.getElementById('reservation-form').submit())">Save Changes</button>
             <button type="button" class="btn btn-ghost" onclick="toggleEdit()">Cancel</button>
           </div>
         </form>
@@ -447,7 +447,7 @@
                 onchange="document.getElementById('waiver-upload-form').submit()" form="waiver-upload-form">
             </label>
             <form method="POST" action="{{ url_for('remove_waiver', res_id=reservation.get('Reservation ID')) }}"
-              onsubmit="return confirm('Remove the uploaded waiver file?')">
+              data-confirm="Remove the uploaded waiver file?">
               <button type="submit" class="btn btn-danger btn-sm">Remove</button>
             </form>
           </div>
@@ -486,7 +486,7 @@
 {% if st not in ('Returned','Canceled') %}
 <div style="margin-top:2rem;padding-top:1.25rem;border-top:1px solid var(--border);display:flex;justify-content:flex-end">
   <form method="POST"
-    onsubmit="return confirm('Cancel this reservation for ' + {{ cname | tojson }} + '? This cannot be undone.')">
+    data-confirm="Cancel this reservation for {{ cname }}? This cannot be undone.">
     <input type="hidden" name="action" value="update_status">
     <input type="hidden" name="status" value="Canceled">
     <button type="submit" class="btn btn-danger btn-sm">✕ Cancel Reservation</button>
@@ -543,10 +543,8 @@ function toggleEdit() {
 // F-11: waiver warning on check-out (D-2: uses tojson so cname is JS-safe)
 function checkOutConfirm(itemCount, cname, waiverOk) {
   var msg = 'Check out ' + itemCount + ' item' + (itemCount !== 1 ? 's' : '') + ' for ' + cname + '? Items will be marked Rented.';
-  if (!waiverOk) {
-    msg = '⚠ Warning: waiver has NOT been signed.\n\n' + msg;
-  }
-  return confirm(msg);
+  if (!waiverOk) msg = '⚠ Warning: waiver has NOT been signed.\n\n' + msg;
+  pkrConfirm(msg, function() { document.getElementById('checkout-form').submit(); }, 'Check Out');
 }
 
 // F-11: payment warning on return modal open

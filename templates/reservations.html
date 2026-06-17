@@ -32,7 +32,8 @@
 <form method="GET" class="filter-bar" style="margin-bottom:1.4rem">
   {% if status_filter %}<input type="hidden" name="status" value="{{ status_filter }}">{% endif %}
   <input class="form-control search-input" type="search" name="q"
-    placeholder="Search by name, email, phone, ID, or item…" value="{{ q }}" style="flex:1;min-width:180px">
+    placeholder="Search by name, email, phone, ID, or item…" value="{{ q }}" style="flex:1;min-width:180px"
+    onsearch="this.form.submit()">
   <input class="form-control" type="date" name="date" value="{{ date_filter }}" style="max-width:175px">
   <button type="submit" class="btn btn-primary">Search</button>
   {% if q or status_filter or date_filter %}
