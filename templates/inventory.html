@@ -10,6 +10,13 @@
   <div class="btn-group" style="align-items:center">
     <button class="btn btn-ghost btn-sm" onclick="toggleSizingGuide()">📏 Sizing Guide</button>
     <button class="btn btn-ghost btn-sm" onclick="toggleImportPanel()">⬆ Import</button>
+    <form method="POST" action="{{ url_for('api_pull') }}" style="display:inline">
+      <input type="hidden" name="next" value="inventory_view">
+      <button type="submit" class="btn btn-ghost btn-sm"
+        onclick="return confirm('Pull inventory from your linked Google Sheet? This will add or update items from the Sheet\'s Inventory tab.')">
+        ⬇ Sync from Sheet
+      </button>
+    </form>
     <!-- View toggle -->
     <div id="view-toggle" style="display:inline-flex;border:1.5px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-left:.25rem">
       <button id="btn-grid" onclick="setView('grid')" title="Grid view"
@@ -511,10 +518,10 @@ function openInvModal(itemId, status, notes, qty, hourly, halfday, fullday, mult
   document.getElementById('inv-status-select').value = status;
   document.getElementById('inv-notes-input').value = notes || '';
   document.getElementById('inv-qty-input').value = qty || 1;
-  document.getElementById('inv-hourly').value  = hourly   || '';
-  document.getElementById('inv-halfday').value = halfday  || '';
-  document.getElementById('inv-fullday').value = fullday  || '';
-  document.getElementById('inv-multiday').value = multiday || '';
+  const _h = document.getElementById('inv-hourly');   if (_h) _h.value = hourly   || '';
+  const _hd2 = document.getElementById('inv-halfday'); if (_hd2) _hd2.value = halfday  || '';
+  const _fd2 = document.getElementById('inv-fullday'); if (_fd2) _fd2.value = fullday  || '';
+  const _md2 = document.getElementById('inv-multiday');if (_md2) _md2.value = multiday || '';
   document.getElementById('inv-overlay').classList.remove('hidden');
   document.getElementById('inv-modal').classList.remove('hidden');
 }

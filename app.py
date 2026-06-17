@@ -36,7 +36,7 @@ from sync import SheetsSyncer
 
 log = logging.getLogger(__name__)
 
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.2"
 
 # OAuth2 over HTTP is fine for localhost (Desktop app running on the user's machine)
 os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
@@ -1500,7 +1500,8 @@ def api_pull():
             flash("Sheet not found — double-check your Google Sheet link in Settings.", "error")
         else:
             flash(f"Pull failed: {e}", "error")
-    return redirect(url_for("settings_view"))
+    next_page = request.form.get("next", "settings_view")
+    return redirect(url_for(next_page))
 
 
 # ── Template helpers ──────────────────────────────────────────────────────────
