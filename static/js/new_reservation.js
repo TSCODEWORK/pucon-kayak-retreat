@@ -137,7 +137,7 @@ function drpHoverDay(key) {
 }
 
 function renderMonth(idx, year, month) {
-  const firstDow = new Date(year, month, 1).getDay();
+  const firstDow = (new Date(year, month, 1).getDay() + 6) % 7; // 0=Mon…6=Sun
   const days     = new Date(year, month+1, 0).getDate();
   const hi = drpEnd || drpHover;
   const lo = drpStart;

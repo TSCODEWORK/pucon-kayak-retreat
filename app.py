@@ -36,7 +36,7 @@ from sync import SheetsSyncer
 
 log = logging.getLogger(__name__)
 
-APP_VERSION = "1.2.6"
+APP_VERSION = "1.2.7"
 
 # OAuth2 over HTTP is fine for localhost (Desktop app running on the user's machine)
 os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
@@ -480,14 +480,15 @@ def reservations():
         filtered = all_res
 
         if q:
-            ql = q.lower()
+            def _norm(s): return s.lower().replace("-", " ").replace("_", " ")
+            ql = _norm(q)
             filtered = [
                 r for r in filtered
-                if ql in r.get("Customer Name", "").lower()
-                or ql in r.get("Customer Email", "").lower()
-                or ql in r.get("Customer Phone", "").lower()
-                or ql in r.get("Reservation ID", "").lower()
-                or ql in r.get("Item IDs", "").lower()
+                if ql in _norm(r.get("Customer Name", ""))
+                or ql in _norm(r.get("Customer Email", ""))
+                or ql in _norm(r.get("Customer Phone", ""))
+                or ql in _norm(r.get("Reservation ID", ""))
+                or ql in _norm(r.get("Item IDs", ""))
             ]
         if status_filter:
             filtered = [r for r in filtered if r.get("Reservation Status") == status_filter]
@@ -668,7 +669,7 @@ def new_reservation():
             db.add_reservation(row)
             _sync()
             flash(f"Reservation {res_id} created successfully!", "success")
-            return redirect(url_for("reservations"))
+            return redirect(url_for("reservation_detail", res_id=res_id))
         except SheetsError as e:
             flash(f"Error saving reservation: {e}", "error")
 

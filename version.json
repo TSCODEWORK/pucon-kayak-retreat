@@ -1,5 +1,5 @@
 {
-  "version": "1.2.6",
-  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.2.6/PuconKayakRetreat.dmg",
-  "release_notes": "Fix DMG download stuck at 0% (switch urllib → requests for SSL/redirect compat)"
+  "version": "1.2.7",
+  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.2.7/PuconKayakRetreat.dmg",
+  "release_notes": "Fix week start inconsistency in booking picker (now Monday-start matching calendar), normalize search to ignore hyphens/spaces, redirect to reservation detail after creation"
 }
