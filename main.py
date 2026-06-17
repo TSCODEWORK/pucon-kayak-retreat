@@ -8,6 +8,7 @@ Entry point for the Pucon Kayak Retreat Mac app.
 
 import sys
 import os
+import shutil
 import socket
 import threading
 import time
@@ -26,6 +27,13 @@ os.environ["PKR_BASE_DIR"] = str(BASE_DIR)
 APP_SUPPORT = Path.home() / "Library" / "Application Support" / "PuconKayakRetreat"
 APP_SUPPORT.mkdir(parents=True, exist_ok=True)
 os.environ["PKR_DB_PATH"] = str(APP_SUPPORT)
+
+# Seed inventory on first launch — copy bundled rental_seed.db if no DB exists yet
+_db_dest = APP_SUPPORT / "rental.db"
+if not _db_dest.exists():
+    _seed = BASE_DIR / "seed" / "rental_seed.db"
+    if _seed.exists():
+        shutil.copy2(str(_seed), str(_db_dest))
 
 ENV_PATH = APP_SUPPORT / ".env"
 if not ENV_PATH.exists():

@@ -14,6 +14,7 @@ a = Analysis(
     datas=[
         ("templates",   "templates"),
         ("static",      "static"),       # includes css/, js/, img/
+        ("seed",        "seed"),         # pre-seeded inventory DB for first launch
     ] + _secrets,
     hiddenimports=[
         # Flask / Jinja / Werkzeug
@@ -119,12 +120,12 @@ app = BUNDLE(
     name="PuconKayakRetreat.app",
     icon="icon.icns",
     bundle_identifier="com.puconkayakretreat.app",
-    version="1.2.8",
+    version="1.2.9",
     info_plist={
         "CFBundleName":              "Pucon Kayak Retreat",
         "CFBundleDisplayName":       "Pucon Kayak Retreat",
-        "CFBundleVersion":           "1.2.8",
-        "CFBundleShortVersionString":"1.2.8",
+        "CFBundleVersion":           "1.2.9",
+        "CFBundleShortVersionString":"1.2.9",
         "NSPrincipalClass":          "NSApplication",
         "NSHighResolutionCapable":   True,
         "NSAppleScriptEnabled":      False,
