@@ -36,7 +36,7 @@ from sync import SheetsSyncer
 
 log = logging.getLogger(__name__)
 
-APP_VERSION = "1.2.5"
+APP_VERSION = "1.2.6"
 
 # OAuth2 over HTTP is fine for localhost (Desktop app running on the user's machine)
 os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
@@ -2062,18 +2062,20 @@ def api_update_download():
         global _update_state
         tmp = tempfile.mktemp(suffix=".dmg", prefix="pkr_update_")
         try:
-            req = urllib.request.Request(
-                download_url, headers={"User-Agent": "PKR-App/updater"}
-            )
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            with _requests.get(
+                download_url,
+                headers={"User-Agent": "PKR-App/updater"},
+                stream=True,
+                timeout=120,
+                allow_redirects=True,
+            ) as resp:
+                resp.raise_for_status()
                 total = int(resp.headers.get("Content-Length", 0))
                 downloaded = 0
-                chunk = 65536  # 64 KB chunks
                 with open(tmp, "wb") as f:
-                    while True:
-                        buf = resp.read(chunk)
+                    for buf in resp.iter_content(chunk_size=65536):
                         if not buf:
-                            break
+                            continue
                         f.write(buf)
                         downloaded += len(buf)
                         if total:

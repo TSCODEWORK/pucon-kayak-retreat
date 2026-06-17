@@ -1,5 +1,5 @@
 {
-  "version": "1.2.5",
-  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.2.5/PuconKayakRetreat.dmg",
-  "release_notes": "Fix Calendar page (now fully functional), sign-out confirm, two-click confirm dialogs, search clear, business name validation"
+  "version": "1.2.6",
+  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.2.6/PuconKayakRetreat.dmg",
+  "release_notes": "Fix DMG download stuck at 0% (switch urllib → requests for SSL/redirect compat)"
 }
