@@ -1,5 +1,5 @@
 {
-  "version": "1.2.7",
-  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.2.7/PuconKayakRetreat.dmg",
-  "release_notes": "Fix week start inconsistency in booking picker (now Monday-start matching calendar), normalize search to ignore hyphens/spaces, redirect to reservation detail after creation"
+  "version": "1.2.8",
+  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.2.8/PuconKayakRetreat.dmg",
+  "release_notes": "Fix update downloader: requests was imported only inside update-check (local scope) so _do_download raised NameError and silently failed at 0% — moved import to module level"
 }

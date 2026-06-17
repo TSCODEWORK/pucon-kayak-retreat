@@ -20,6 +20,7 @@ import threading
 import time
 import subprocess
 import urllib.request
+import requests as _requests
 from pathlib import Path
 from collections import Counter
 from datetime import datetime, date, timedelta
@@ -36,7 +37,7 @@ from sync import SheetsSyncer
 
 log = logging.getLogger(__name__)
 
-APP_VERSION = "1.2.7"
+APP_VERSION = "1.2.8"
 
 # OAuth2 over HTTP is fine for localhost (Desktop app running on the user's machine)
 os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
@@ -2029,7 +2030,6 @@ _update_state: dict = {"status": "idle", "progress": 0, "error": ""}
 def api_update_check():
     """Return latest version info from GitHub."""
     try:
-        import requests as _requests
         resp = _requests.get(
             VERSION_JSON_URL,
             headers={"User-Agent": "PKR-App/updater", "Cache-Control": "no-cache"},
