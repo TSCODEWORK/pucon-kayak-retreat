@@ -1,5 +1,5 @@
 {
-  "version": "1.2.0",
-  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.2.0/PuconKayakRetreat.dmg",
-  "release_notes": "Fix pricing currency bug, equipment-bleed-between-bookings bug, and stale totals on date edit; make the whole booking system quantity-aware so multiple units of the same item can be reserved up to inventory Quantity; add per-day rate display and a manual Recalculate option"
+  "version": "1.2.1",
+  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.2.1/PuconKayakRetreat.dmg",
+  "release_notes": "Maintenance release — triggers auto-update for existing installs"
 }
