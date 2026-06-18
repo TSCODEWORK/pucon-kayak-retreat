@@ -130,12 +130,32 @@ else
 fi
 
 # ── 6. Sign the app (ad-hoc) ──────────────────────────────────────────────────
+# codesign --deep fails on PyInstaller bundles because .dist-info dirs look like
+# sub-bundles to codesign. Sign Mach-O files individually, then sign the .app.
 echo ""
 echo "▸ Ad-hoc code-signing…"
-if codesign --force --deep --sign - "$UNI_APP" 2>/dev/null; then
+sign_errors=0
+
+# 6a. Sign every .so and .dylib
+while IFS= read -r -d '' f; do
+  codesign --force --sign - "$f" 2>/dev/null || sign_errors=$((sign_errors + 1))
+done < <(find "$UNI_APP" \( -name "*.so" -o -name "*.dylib" \) -print0)
+
+# 6b. Sign sub-frameworks (Python.framework etc.)
+while IFS= read -r -d '' f; do
+  codesign --force --sign - "$f" 2>/dev/null || true
+done < <(find "$UNI_APP" -name "*.framework" -print0)
+
+# 6c. Sign the main executable
+codesign --force --sign - "$UNI_APP/Contents/MacOS/$APP_NAME" 2>/dev/null \
+  || sign_errors=$((sign_errors + 1))
+
+# 6d. Sign the bundle itself (no --deep — avoids the .dist-info false-positive)
+if codesign --force --sign - "$UNI_APP" 2>/dev/null; then
   echo "  ✓ Signed (ad-hoc). Users will need to right-click → Open on first launch."
+  [ $sign_errors -gt 0 ] && echo "  ⚠️  $sign_errors individual components could not be signed (non-fatal)"
 else
-  echo "  (codesign unavailable)"
+  echo "  ⚠️  Bundle signing failed — app will still run via right-click → Open"
 fi
 
 # ── 7. Create DMG ─────────────────────────────────────────────────────────────
