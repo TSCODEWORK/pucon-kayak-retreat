@@ -1,5 +1,5 @@
 {
-  "version": "1.3.0",
-  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.3.0/PuconKayakRetreat.dmg",
-  "release_notes": "Fix update system: correct closure variable bug, check POST response before polling, detect actual app install path, use ditto+rm instead of cp, strip quarantine, clean stale mounts, resume banner on page reload"
+  "version": "1.3.1",
+  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.3.1/PuconKayakRetreat.dmg",
+  "release_notes": "Universal binary — runs natively on both Intel and Apple Silicon Macs"
 }
