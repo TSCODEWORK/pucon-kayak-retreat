@@ -104,15 +104,24 @@
 
   <!-- Ready to install state -->
   <div id="upd-ready" style="display:none">
-    <div style="font-weight:600;margin-bottom:.5rem">✅ Downloaded — ready to install</div>
-    <div style="font-size:.78rem;color:rgba(255,255,255,.7);margin-bottom:.85rem">
-      The app will close, update, and reopen automatically.<br>Your data is not affected.
+    <div style="font-weight:600;margin-bottom:.65rem">✅ Download complete</div>
+    <ol style="margin:0 0 .85rem 1.1rem;padding:0;font-size:.78rem;color:rgba(255,255,255,.85);line-height:1.7">
+      <li>Click <strong>Open Installer</strong> below</li>
+      <li>Drag <strong>Pucon Kayak Retreat</strong> → <strong>Applications</strong></li>
+      <li>Click <strong>Quit &amp; Reopen</strong>, then launch the app from Applications</li>
+    </ol>
+    <div style="display:flex;flex-direction:column;gap:.5rem">
+      <button onclick="updInstall()"
+        style="width:100%;background:#4ade80;color:#0f3d4a;font-weight:700;border:none;
+        padding:.5rem;border-radius:6px;cursor:pointer;font-size:.88rem">
+        Open Installer
+      </button>
+      <button id="upd-quit-btn" onclick="updQuit()" style="display:none;width:100%;
+        background:rgba(255,255,255,.15);color:#fff;font-weight:600;border:none;
+        padding:.45rem;border-radius:6px;cursor:pointer;font-size:.84rem">
+        Quit &amp; Reopen
+      </button>
     </div>
-    <button onclick="updInstall()"
-      style="width:100%;background:#4ade80;color:#0f3d4a;font-weight:700;border:none;
-      padding:.5rem;border-radius:6px;cursor:pointer;font-size:.9rem">
-      Restart &amp; Install
-    </button>
   </div>
 
   <!-- Error state -->
@@ -220,10 +229,22 @@
   };
 
   window.updInstall = function() {
-    document.getElementById('upd-ready').innerHTML =
-      '<div style="text-align:center;padding:.5rem 0">🔄 Installing… app will relaunch shortly.</div>';
     fetch('/api/update/install', { method: 'POST' })
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) {
+          document.getElementById('upd-error-msg').textContent = d.error;
+          show('upd-error');
+        } else {
+          // DMG opened in Finder — reveal the Quit button so user can close after dragging
+          document.getElementById('upd-quit-btn').style.display = '';
+        }
+      })
       .catch(() => {});
+  };
+
+  window.updQuit = function() {
+    fetch('/api/update/quit', { method: 'POST' }).catch(() => {});
   };
 })();
 </script>

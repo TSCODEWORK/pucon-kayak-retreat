@@ -37,7 +37,7 @@ from sync import SheetsSyncer
 
 log = logging.getLogger(__name__)
 
-APP_VERSION = "1.3.2"
+APP_VERSION = "1.3.3"
 
 # OAuth2 over HTTP is fine for localhost (Desktop app running on the user's machine)
 os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
@@ -2106,8 +2106,7 @@ def api_update_progress():
 @app.route("/api/update/install", methods=["POST"])
 @login_required
 def api_update_install():
-    """Mount the downloaded DMG, write an updater script, launch it, then quit."""
-    # F-17: guard against missing/stale state
+    """Open the downloaded DMG in Finder so the user can drag-install it."""
     if _update_state.get("status") != "ready":
         return jsonify({"error": "No update ready to install"}), 400
 
@@ -2115,71 +2114,25 @@ def api_update_install():
     if not dmg_path or not os.path.exists(dmg_path):
         return jsonify({"error": "DMG file not found — try downloading again"}), 400
 
-    mount_point = "/tmp/pkr_update_vol"
-
-    # Where is the running .app bundle?
-    app_dest = os.environ.get("PKR_APP_PATH", "/Applications/PuconKayakRetreat.app")
-
-    # Shell script runs *after* this process exits:
-    #   1. Waits for the app to fully quit (polls until the process is gone)
-    #   2. Cleans up any stale mount from a previous attempt
-    #   3. Mounts the new DMG
-    #   4. Uses ditto (not cp -r) to replace the .app in-place
-    #   5. Strips quarantine so macOS doesn't block the relaunch
-    #   6. Detaches the DMG and removes the temp file
-    #   7. Relaunches from the same path the app was running from
-    script = f"""#!/bin/bash
-set -e
-
-# Wait up to 30 s for this PID to exit
-for i in $(seq 1 30); do
-    kill -0 {os.getpid()} 2>/dev/null || break
-    sleep 1
-done
-
-# Clean up any stale mount from a previous failed attempt
-hdiutil detach "{mount_point}" -force -quiet 2>/dev/null || true
-rm -rf "{mount_point}"
-
-# Mount the new DMG
-hdiutil attach "{dmg_path}" -mountpoint "{mount_point}" -nobrowse -quiet
-
-SRC="{mount_point}/PuconKayakRetreat.app"
-DST="{app_dest}"
-
-if [ -d "$SRC" ]; then
-    # Remove old bundle first so ditto doesn't merge stale files
-    rm -rf "$DST"
-    ditto "$SRC" "$DST"
-    # Strip quarantine so Gatekeeper doesn't block relaunch
-    xattr -cr "$DST" 2>/dev/null || true
-fi
-
-hdiutil detach "{mount_point}" -quiet 2>/dev/null || true
-rm -f "{dmg_path}"
-
-open "$DST"
-"""
-    script_path = "/tmp/pkr_updater.sh"
-    with open(script_path, "w") as f:
-        f.write(script)
-    os.chmod(script_path, stat.S_IRWXU)
-
-    # Launch updater detached so it survives this process quitting
+    # Just open the DMG — macOS mounts it and shows the Finder window.
+    # The user drags the app to Applications themselves; no auto-replace risk.
     subprocess.Popen(
-        ["bash", script_path],
+        ["open", dmg_path],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        start_new_session=True,
     )
+    return jsonify({"status": "opened"})
 
-    # Quit Flask (and therefore the pywebview window) after a moment
+
+@app.route("/api/update/quit", methods=["POST"])
+@login_required
+def api_update_quit():
+    """Quit the app so the user can relaunch the newly installed version."""
     def _quit():
-        time.sleep(1.2)
+        time.sleep(0.8)
         os.kill(os.getpid(), signal.SIGTERM)
-
     threading.Thread(target=_quit, daemon=True).start()
-    return jsonify({"status": "installing"})
+    return jsonify({"status": "quitting"})
 
 
 if __name__ == "__main__":
