@@ -1,5 +1,5 @@
 {
-  "version": "1.3.4",
-  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.3.4/PuconKayakRetreat.dmg",
-  "release_notes": "Revert to arm64-only build — universal binary had broken signature that Gatekeeper rejected on all machines"
+  "version": "1.3.5",
+  "download_url": "https://github.com/TSCODEWORK/pucon-kayak-retreat/releases/download/v1.3.5/PuconKayakRetreat.dmg",
+  "release_notes": "Fix 404 on inventory items with slashes in their ID (e.g. Waka - OG M/L) — use <path:item_id> route converter"
 }

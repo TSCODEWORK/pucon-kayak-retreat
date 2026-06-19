@@ -37,7 +37,7 @@ from sync import SheetsSyncer
 
 log = logging.getLogger(__name__)
 
-APP_VERSION = "1.3.4"
+APP_VERSION = "1.3.5"
 
 # OAuth2 over HTTP is fine for localhost (Desktop app running on the user's machine)
 os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
@@ -951,7 +951,7 @@ def add_equipment():
     return redirect(url_for("inventory_view"))
 
 
-@app.route("/inventory/<item_id>/delete", methods=["POST"])
+@app.route("/inventory/<path:item_id>/delete", methods=["POST"])
 @login_required
 def delete_inventory(item_id):
     try:
@@ -1104,7 +1104,7 @@ def import_inventory():
     return redirect(url_for("inventory_view"))
 
 
-@app.route("/inventory/<item_id>/update", methods=["POST"])
+@app.route("/inventory/<path:item_id>/update", methods=["POST"])
 @login_required
 def update_inventory(item_id):
     try:
